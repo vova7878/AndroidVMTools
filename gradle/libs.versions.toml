@@ -1,0 +1,14 @@
+[versions]
+agp = "8.5.1"
+panamaport = "v0.0.3-preview"
+androidmisc = "v0.0.3"
+
+[libraries]
+androidmisc = { module = "com.github.vova7878:AndroidMisc", version.ref = "androidmisc" }
+androidpanama = { module = "com.github.vova7878.PanamaPort:AndroidPanama", version.ref = "panamaport" }
+androidunsafe = { module = "com.github.vova7878.PanamaPort:AndroidUnsafe", version.ref = "panamaport" }
+
+[plugins]
+android-library = { id = "com.android.library", version.ref = "agp" }
+maven-publish = { id = 'maven-publish' }
+

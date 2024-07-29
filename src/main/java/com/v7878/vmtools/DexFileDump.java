@@ -121,7 +121,7 @@ public final class DexFileDump {
         int version = getIntN(header + VERSION_OFFSET);
         if (!checkDexVersion(version)) {
             throw new IllegalStateException(
-                    "Unsupported dex version: " + Long.toHexString(version));
+                    "Unsupported dex version: " + Integer.toHexString(version));
         }
         int file_size = getIntN(header + DATA_START_OFFSET)
                 + getIntN(header + DATA_SIZE_OFFSET);

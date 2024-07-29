@@ -26,8 +26,8 @@ android {
 }
 
 dependencies {
-    implementation libs.androidpanama
-    implementation libs.androidunsafe
+    api libs.androidpanama
+    api libs.androidunsafe
     implementation libs.androidmisc
 }
 

@@ -2,7 +2,7 @@
 agp = "8.5.1"
 androidmisc = "v0.0.3"
 keepannotation = "v0.0.1"
-panamaport = "e6e51c1a8d"
+panamaport = "068d94f1ce"
 
 [libraries]
 androidmisc = { module = "com.github.vova7878:AndroidMisc", version.ref = "androidmisc" }

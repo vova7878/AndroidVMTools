@@ -786,15 +786,15 @@ public final class JVMTI {
         checkError(Native.INSTANCE.SetEventCallbacks(JVMTI_ENV, callbacks, size_of_callbacks));
     }
 
-    public void SetEventNotificationMode(int mode, int event_type, Thread event_thread) throws JVMTIException {
+    public static void SetEventNotificationMode(int mode, int event_type, Thread event_thread) throws JVMTIException {
         checkError(Native.INSTANCE.SetEventNotificationMode(JVMTI_ENV, mode, event_type, event_thread));
     }
 
-    public void SetBreakpoint(Method method, long location) throws JVMTIException {
+    public static void SetBreakpoint(Method method, long location) throws JVMTIException {
         checkError(Native.INSTANCE.SetBreakpoint(JVMTI_ENV, JNIUtils.FromReflectedMethod(method), location));
     }
 
-    public void ClearBreakpoint(Method method, long location) throws JVMTIException {
+    public static void ClearBreakpoint(Method method, long location) throws JVMTIException {
         checkError(Native.INSTANCE.ClearBreakpoint(JVMTI_ENV, JNIUtils.FromReflectedMethod(method), location));
     }
 }

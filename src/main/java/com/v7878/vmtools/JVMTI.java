@@ -27,6 +27,7 @@ import static com.v7878.unsafe.foreign.BulkLinker.CallType.CRITICAL;
 import static com.v7878.unsafe.foreign.BulkLinker.CallType.NATIVE_STATIC_OMIT_ENV;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.BOOL;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.INT;
+import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.OBJECT;
 import static com.v7878.unsafe.foreign.ExtraLayouts.WORD;
@@ -111,12 +112,15 @@ import com.v7878.unsafe.foreign.BulkLinker.CallSignature;
 import com.v7878.unsafe.foreign.BulkLinker.LibrarySymbol;
 import com.v7878.unsafe.foreign.LibDLExt;
 
+import java.lang.reflect.Method;
 import java.util.Objects;
 import java.util.Optional;
 
-public class JVMTI {
+public final class JVMTI {
     private JVMTI() {
     }
+
+    static final Arena JVMTI_SCOPE = JavaForeignAccess.createImplicitHeapArena(JVMTI.class);
 
     public static final GroupLayout JVMTI_INTERFACE_LAYOUT = structLayout(
             ADDRESS.withName("reserved1"),
@@ -278,7 +282,6 @@ public class JVMTI {
     public static final AddressLayout jvmtiEnv_LAYOUT
             = ADDRESS.withTargetLayout(JVMTI_INTERFACE_LAYOUT);
 
-    private static final Arena JVMTI_SCOPE = JavaForeignAccess.createImplicitHeapArena(JVMTI.class);
     private static final String JVMTI_NAME = VM.isDebugVMLibrary() ? "libopenjdkjvmtid.so" : "libopenjdkjvmti.so";
     @ApiSensitive
     public static final SymbolLookup JVMTI = LibDLExt.systemLibraryLookup(JVMTI_NAME, JVMTI_SCOPE);
@@ -572,6 +575,22 @@ public class JVMTI {
         @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, LONG_AS_WORD})
         abstract int RelinquishCapabilities(long env, long capabilities_ptr);
 
+        @LibrarySymbol(name = "SetEventCallbacks")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, LONG_AS_WORD, INT})
+        abstract int SetEventCallbacks(long env, long callbacks, int size_of_callbacks);
+
+        @LibrarySymbol(name = "SetEventNotificationMode")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, INT, INT, OBJECT})
+        abstract int SetEventNotificationMode(long env, int mode, int event_type, Object event_thread);
+
+        @LibrarySymbol(name = "SetBreakpoint")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, LONG_AS_WORD, LONG})
+        abstract int SetBreakpoint(long env, long mid, long location);
+
+        @LibrarySymbol(name = "ClearBreakpoint")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, LONG_AS_WORD, LONG})
+        abstract int ClearBreakpoint(long env, long mid, long location);
+
         static final Native INSTANCE = AndroidUnsafe.allocateInstance(
                 BulkLinker.processSymbols(JVMTI_SCOPE, Native.class, getJVMTIInterfaceLookup()));
     }
@@ -729,8 +748,7 @@ public class JVMTI {
 
                     LLVMBuildRet(builder, const_int32(context, JVMTI_ERROR_NONE));
                 }, name, JVMTI_SCOPE);
-                MemorySegment iface = getJVMTIInterface();
-                MemorySegment.copy(iface, 0, INTERFACE_COPY, 0, iface.byteSize());
+                INTERFACE_COPY.copyFrom(getJVMTIInterface());
                 INTERFACE_COPY.set(ADDRESS, GPC_OFFSET, getter);
             }
         }
@@ -762,5 +780,21 @@ public class JVMTI {
             ptr.set(JAVA_LONG_UNALIGNED, 0, JVMTICapabilities.get(capabilities));
             checkError(Native.INSTANCE.RelinquishCapabilities(JVMTI_ENV, ptr.nativeAddress()));
         }
+    }
+
+    static void SetEventCallbacks(long callbacks, int size_of_callbacks) throws JVMTIException {
+        checkError(Native.INSTANCE.SetEventCallbacks(JVMTI_ENV, callbacks, size_of_callbacks));
+    }
+
+    public void SetEventNotificationMode(int mode, int event_type, Thread event_thread) throws JVMTIException {
+        checkError(Native.INSTANCE.SetEventNotificationMode(JVMTI_ENV, mode, event_type, event_thread));
+    }
+
+    public void SetBreakpoint(Method method, long location) throws JVMTIException {
+        checkError(Native.INSTANCE.SetBreakpoint(JVMTI_ENV, JNIUtils.FromReflectedMethod(method), location));
+    }
+
+    public void ClearBreakpoint(Method method, long location) throws JVMTIException {
+        checkError(Native.INSTANCE.ClearBreakpoint(JVMTI_ENV, JNIUtils.FromReflectedMethod(method), location));
     }
 }

@@ -26,6 +26,8 @@ import static com.v7878.unsafe.JNIUtils.getJavaVMPtr;
 import static com.v7878.unsafe.foreign.BulkLinker.CallType.CRITICAL;
 import static com.v7878.unsafe.foreign.BulkLinker.CallType.NATIVE_STATIC_OMIT_ENV;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.BOOL;
+import static com.v7878.unsafe.foreign.BulkLinker.MapType.DOUBLE;
+import static com.v7878.unsafe.foreign.BulkLinker.MapType.FLOAT;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.INT;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
@@ -591,6 +593,46 @@ public final class JVMTI {
         @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, LONG_AS_WORD, LONG})
         abstract int ClearBreakpoint(long env, long mid, long location);
 
+        @LibrarySymbol(name = "SuspendThread")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT})
+        abstract int SuspendThread(long env, Object thread);
+
+        @LibrarySymbol(name = "ResumeThread")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT})
+        abstract int ResumeThread(long env, Object thread);
+
+        @LibrarySymbol(name = "StopThread")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT})
+        abstract int StopThread(long env, Object thread);
+
+        @LibrarySymbol(name = "InterruptThread")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT})
+        abstract int InterruptThread(long env, Object thread);
+
+        @LibrarySymbol(name = "ForceEarlyReturnObject")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, OBJECT})
+        abstract int ForceEarlyReturnObject(long env, Object thread, Object value);
+
+        @LibrarySymbol(name = "ForceEarlyReturnInt")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT})
+        abstract int ForceEarlyReturnInt(long env, Object thread, int value);
+
+        @LibrarySymbol(name = "ForceEarlyReturnLong")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, LONG})
+        abstract int ForceEarlyReturnLong(long env, Object thread, long value);
+
+        @LibrarySymbol(name = "ForceEarlyReturnFloat")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, FLOAT})
+        abstract int ForceEarlyReturnFloat(long env, Object thread, float value);
+
+        @LibrarySymbol(name = "ForceEarlyReturnDouble")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, DOUBLE})
+        abstract int ForceEarlyReturnDouble(long env, Object thread, double value);
+
+        @LibrarySymbol(name = "ForceEarlyReturnVoid")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT})
+        abstract int ForceEarlyReturnVoid(long env, Object thread);
+
         static final Native INSTANCE = AndroidUnsafe.allocateInstance(
                 BulkLinker.processSymbols(JVMTI_SCOPE, Native.class, getJVMTIInterfaceLookup()));
     }
@@ -604,61 +646,61 @@ public final class JVMTI {
 
     public static String GetErrorName(int error) {
         return switch (error) {
-            case JVMTI_ERROR_NONE -> "JVMTI_ERROR_NONE";
-            case JVMTI_ERROR_INVALID_THREAD -> "JVMTI_ERROR_INVALID_THREAD";
-            case JVMTI_ERROR_INVALID_THREAD_GROUP -> "JVMTI_ERROR_INVALID_THREAD_GROUP";
-            case JVMTI_ERROR_INVALID_PRIORITY -> "JVMTI_ERROR_INVALID_PRIORITY";
-            case JVMTI_ERROR_THREAD_NOT_SUSPENDED -> "JVMTI_ERROR_THREAD_NOT_SUSPENDED";
-            case JVMTI_ERROR_THREAD_SUSPENDED -> "JVMTI_ERROR_THREAD_SUSPENDED";
-            case JVMTI_ERROR_THREAD_NOT_ALIVE -> "JVMTI_ERROR_THREAD_NOT_ALIVE";
-            case JVMTI_ERROR_INVALID_OBJECT -> "JVMTI_ERROR_INVALID_OBJECT";
-            case JVMTI_ERROR_INVALID_CLASS -> "JVMTI_ERROR_INVALID_CLASS";
-            case JVMTI_ERROR_CLASS_NOT_PREPARED -> "JVMTI_ERROR_CLASS_NOT_PREPARED";
-            case JVMTI_ERROR_INVALID_METHODID -> "JVMTI_ERROR_INVALID_METHODID";
-            case JVMTI_ERROR_INVALID_LOCATION -> "JVMTI_ERROR_INVALID_LOCATION";
-            case JVMTI_ERROR_INVALID_FIELDID -> "JVMTI_ERROR_INVALID_FIELDID";
-            case JVMTI_ERROR_NO_MORE_FRAMES -> "JVMTI_ERROR_NO_MORE_FRAMES";
-            case JVMTI_ERROR_OPAQUE_FRAME -> "JVMTI_ERROR_OPAQUE_FRAME";
-            case JVMTI_ERROR_TYPE_MISMATCH -> "JVMTI_ERROR_TYPE_MISMATCH";
-            case JVMTI_ERROR_INVALID_SLOT -> "JVMTI_ERROR_INVALID_SLOT";
-            case JVMTI_ERROR_DUPLICATE -> "JVMTI_ERROR_DUPLICATE";
-            case JVMTI_ERROR_NOT_FOUND -> "JVMTI_ERROR_NOT_FOUND";
-            case JVMTI_ERROR_INVALID_MONITOR -> "JVMTI_ERROR_INVALID_MONITOR";
-            case JVMTI_ERROR_NOT_MONITOR_OWNER -> "JVMTI_ERROR_NOT_MONITOR_OWNER";
-            case JVMTI_ERROR_INTERRUPT -> "JVMTI_ERROR_INTERRUPT";
-            case JVMTI_ERROR_INVALID_CLASS_FORMAT -> "JVMTI_ERROR_INVALID_CLASS_FORMAT";
-            case JVMTI_ERROR_CIRCULAR_CLASS_DEFINITION -> "JVMTI_ERROR_CIRCULAR_CLASS_DEFINITION";
-            case JVMTI_ERROR_FAILS_VERIFICATION -> "JVMTI_ERROR_FAILS_VERIFICATION";
+            case JVMTI_ERROR_NONE -> "NONE";
+            case JVMTI_ERROR_INVALID_THREAD -> "INVALID_THREAD";
+            case JVMTI_ERROR_INVALID_THREAD_GROUP -> "INVALID_THREAD_GROUP";
+            case JVMTI_ERROR_INVALID_PRIORITY -> "INVALID_PRIORITY";
+            case JVMTI_ERROR_THREAD_NOT_SUSPENDED -> "THREAD_NOT_SUSPENDED";
+            case JVMTI_ERROR_THREAD_SUSPENDED -> "THREAD_SUSPENDED";
+            case JVMTI_ERROR_THREAD_NOT_ALIVE -> "THREAD_NOT_ALIVE";
+            case JVMTI_ERROR_INVALID_OBJECT -> "INVALID_OBJECT";
+            case JVMTI_ERROR_INVALID_CLASS -> "INVALID_CLASS";
+            case JVMTI_ERROR_CLASS_NOT_PREPARED -> "CLASS_NOT_PREPARED";
+            case JVMTI_ERROR_INVALID_METHODID -> "INVALID_METHODID";
+            case JVMTI_ERROR_INVALID_LOCATION -> "INVALID_LOCATION";
+            case JVMTI_ERROR_INVALID_FIELDID -> "INVALID_FIELDID";
+            case JVMTI_ERROR_NO_MORE_FRAMES -> "NO_MORE_FRAMES";
+            case JVMTI_ERROR_OPAQUE_FRAME -> "OPAQUE_FRAME";
+            case JVMTI_ERROR_TYPE_MISMATCH -> "TYPE_MISMATCH";
+            case JVMTI_ERROR_INVALID_SLOT -> "INVALID_SLOT";
+            case JVMTI_ERROR_DUPLICATE -> "DUPLICATE";
+            case JVMTI_ERROR_NOT_FOUND -> "NOT_FOUND";
+            case JVMTI_ERROR_INVALID_MONITOR -> "INVALID_MONITOR";
+            case JVMTI_ERROR_NOT_MONITOR_OWNER -> "NOT_MONITOR_OWNER";
+            case JVMTI_ERROR_INTERRUPT -> "INTERRUPT";
+            case JVMTI_ERROR_INVALID_CLASS_FORMAT -> "INVALID_CLASS_FORMAT";
+            case JVMTI_ERROR_CIRCULAR_CLASS_DEFINITION -> "CIRCULAR_CLASS_DEFINITION";
+            case JVMTI_ERROR_FAILS_VERIFICATION -> "FAILS_VERIFICATION";
             case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_ADDED ->
-                    "JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_ADDED";
+                    "UNSUPPORTED_REDEFINITION_METHOD_ADDED";
             case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_SCHEMA_CHANGED ->
-                    "JVMTI_ERROR_UNSUPPORTED_REDEFINITION_SCHEMA_CHANGED";
-            case JVMTI_ERROR_INVALID_TYPESTATE -> "JVMTI_ERROR_INVALID_TYPESTATE";
+                    "UNSUPPORTED_REDEFINITION_SCHEMA_CHANGED";
+            case JVMTI_ERROR_INVALID_TYPESTATE -> "INVALID_TYPESTATE";
             case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_HIERARCHY_CHANGED ->
-                    "JVMTI_ERROR_UNSUPPORTED_REDEFINITION_HIERARCHY_CHANGED";
+                    "UNSUPPORTED_REDEFINITION_HIERARCHY_CHANGED";
             case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_DELETED ->
-                    "JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_DELETED";
-            case JVMTI_ERROR_UNSUPPORTED_VERSION -> "JVMTI_ERROR_UNSUPPORTED_VERSION";
-            case JVMTI_ERROR_NAMES_DONT_MATCH -> "JVMTI_ERROR_NAMES_DONT_MATCH";
+                    "UNSUPPORTED_REDEFINITION_METHOD_DELETED";
+            case JVMTI_ERROR_UNSUPPORTED_VERSION -> "UNSUPPORTED_VERSION";
+            case JVMTI_ERROR_NAMES_DONT_MATCH -> "NAMES_DONT_MATCH";
             case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_CLASS_MODIFIERS_CHANGED ->
-                    "JVMTI_ERROR_UNSUPPORTED_REDEFINITION_CLASS_MODIFIERS_CHANGED";
+                    "UNSUPPORTED_REDEFINITION_CLASS_MODIFIERS_CHANGED";
             case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_MODIFIERS_CHANGED ->
-                    "JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_MODIFIERS_CHANGED";
-            case JVMTI_ERROR_UNMODIFIABLE_CLASS -> "JVMTI_ERROR_UNMODIFIABLE_CLASS";
-            case JVMTI_ERROR_NOT_AVAILABLE -> "JVMTI_ERROR_NOT_AVAILABLE";
-            case JVMTI_ERROR_MUST_POSSESS_CAPABILITY -> "JVMTI_ERROR_MUST_POSSESS_CAPABILITY";
-            case JVMTI_ERROR_NULL_POINTER -> "JVMTI_ERROR_NULL_POINTER";
-            case JVMTI_ERROR_ABSENT_INFORMATION -> "JVMTI_ERROR_ABSENT_INFORMATION";
-            case JVMTI_ERROR_INVALID_EVENT_TYPE -> "JVMTI_ERROR_INVALID_EVENT_TYPE";
-            case JVMTI_ERROR_ILLEGAL_ARGUMENT -> "JVMTI_ERROR_ILLEGAL_ARGUMENT";
-            case JVMTI_ERROR_NATIVE_METHOD -> "JVMTI_ERROR_NATIVE_METHOD";
-            case JVMTI_ERROR_CLASS_LOADER_UNSUPPORTED -> "JVMTI_ERROR_CLASS_LOADER_UNSUPPORTED";
-            case JVMTI_ERROR_OUT_OF_MEMORY -> "JVMTI_ERROR_OUT_OF_MEMORY";
-            case JVMTI_ERROR_ACCESS_DENIED -> "JVMTI_ERROR_ACCESS_DENIED";
-            case JVMTI_ERROR_WRONG_PHASE -> "JVMTI_ERROR_WRONG_PHASE";
-            case JVMTI_ERROR_INTERNAL -> "JVMTI_ERROR_INTERNAL";
-            case JVMTI_ERROR_UNATTACHED_THREAD -> "JVMTI_ERROR_UNATTACHED_THREAD";
-            case JVMTI_ERROR_INVALID_ENVIRONMENT -> "JVMTI_ERROR_INVALID_ENVIRONMENT";
+                    "UNSUPPORTED_REDEFINITION_METHOD_MODIFIERS_CHANGED";
+            case JVMTI_ERROR_UNMODIFIABLE_CLASS -> "UNMODIFIABLE_CLASS";
+            case JVMTI_ERROR_NOT_AVAILABLE -> "NOT_AVAILABLE";
+            case JVMTI_ERROR_MUST_POSSESS_CAPABILITY -> "MUST_POSSESS_CAPABILITY";
+            case JVMTI_ERROR_NULL_POINTER -> "NULL_POINTER";
+            case JVMTI_ERROR_ABSENT_INFORMATION -> "ABSENT_INFORMATION";
+            case JVMTI_ERROR_INVALID_EVENT_TYPE -> "INVALID_EVENT_TYPE";
+            case JVMTI_ERROR_ILLEGAL_ARGUMENT -> "ILLEGAL_ARGUMENT";
+            case JVMTI_ERROR_NATIVE_METHOD -> "NATIVE_METHOD";
+            case JVMTI_ERROR_CLASS_LOADER_UNSUPPORTED -> "CLASS_LOADER_UNSUPPORTED";
+            case JVMTI_ERROR_OUT_OF_MEMORY -> "OUT_OF_MEMORY";
+            case JVMTI_ERROR_ACCESS_DENIED -> "ACCESS_DENIED";
+            case JVMTI_ERROR_WRONG_PHASE -> "WRONG_PHASE";
+            case JVMTI_ERROR_INTERNAL -> "INTERNAL";
+            case JVMTI_ERROR_UNATTACHED_THREAD -> "UNATTACHED_THREAD";
+            case JVMTI_ERROR_INVALID_ENVIRONMENT -> "INVALID_ENVIRONMENT";
             default -> "Unknown JVMTI_ERROR code: " + error;
         };
     }
@@ -796,5 +838,47 @@ public final class JVMTI {
 
     public static void ClearBreakpoint(Method method, long location) throws JVMTIException {
         checkError(Native.INSTANCE.ClearBreakpoint(JVMTI_ENV, JNIUtils.FromReflectedMethod(method), location));
+    }
+
+    public static void SuspendThread(Thread thread) throws JVMTIException {
+        checkError(Native.INSTANCE.SuspendThread(JVMTI_ENV, thread));
+    }
+
+    public static void ResumeThread(Thread thread) throws JVMTIException {
+        checkError(Native.INSTANCE.ResumeThread(JVMTI_ENV, thread));
+    }
+
+    public static void StopThread(Thread thread) throws JVMTIException {
+        checkError(Native.INSTANCE.StopThread(JVMTI_ENV, thread));
+    }
+
+    public static void InterruptThread(Thread thread) throws JVMTIException {
+        checkError(Native.INSTANCE.InterruptThread(JVMTI_ENV, thread));
+    }
+
+    // TODO: what if we need to force return from current thread?
+
+    public static void ForceEarlyReturnObject(Thread thread, Object value) {
+        checkError(Native.INSTANCE.ForceEarlyReturnObject(JVMTI_ENV, thread, value));
+    }
+
+    public static void ForceEarlyReturnInt(Thread thread, int value) {
+        checkError(Native.INSTANCE.ForceEarlyReturnInt(JVMTI_ENV, thread, value));
+    }
+
+    public static void ForceEarlyReturnLong(Thread thread, long value) {
+        checkError(Native.INSTANCE.ForceEarlyReturnLong(JVMTI_ENV, thread, value));
+    }
+
+    public static void ForceEarlyReturnFloat(Thread thread, float value) {
+        checkError(Native.INSTANCE.ForceEarlyReturnFloat(JVMTI_ENV, thread, value));
+    }
+
+    public static void ForceEarlyReturnDouble(Thread thread, double value) {
+        checkError(Native.INSTANCE.ForceEarlyReturnDouble(JVMTI_ENV, thread, value));
+    }
+
+    public static void ForceEarlyReturnVoid(Thread thread) {
+        checkError(Native.INSTANCE.ForceEarlyReturnVoid(JVMTI_ENV, thread));
     }
 }

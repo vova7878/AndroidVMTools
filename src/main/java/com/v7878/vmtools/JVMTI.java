@@ -5,6 +5,8 @@ import static com.v7878.foreign.MemoryLayout.paddedStructLayout;
 import static com.v7878.foreign.MemoryLayout.structLayout;
 import static com.v7878.foreign.ValueLayout.ADDRESS;
 import static com.v7878.foreign.ValueLayout.JAVA_BYTE;
+import static com.v7878.foreign.ValueLayout.JAVA_DOUBLE;
+import static com.v7878.foreign.ValueLayout.JAVA_FLOAT;
 import static com.v7878.foreign.ValueLayout.JAVA_INT;
 import static com.v7878.foreign.ValueLayout.JAVA_LONG;
 import static com.v7878.foreign.ValueLayout.JAVA_LONG_UNALIGNED;
@@ -330,6 +332,7 @@ public final class JVMTI {
             }
             JVMTI_ENV = ptr.get(ADDRESS, 0).nativeAddress();
         }
+        ForceAllPotentialCapabilities();
     }
 
     public static MemorySegment getJVMTIEnvPtr() {
@@ -554,6 +557,39 @@ public final class JVMTI {
         }
     }
 
+    private static void ForceAllPotentialCapabilities() throws JVMTIException {
+        class Holder {
+            private static final long ALL_CAPS = (~0L) >>> (64 - 41);
+            private static final long GPC_OFFSET = JVMTI_INTERFACE_LAYOUT.
+                    byteOffset(groupElement("GetPotentialCapabilities"));
+            static final MemorySegment INTERFACE_COPY =
+                    JVMTI_SCOPE.allocate(JVMTI_INTERFACE_LAYOUT);
+
+            static {
+                final String name = "function";
+                MemorySegment getter = generateFunctionCodeSegment((context, module, builder) -> {
+                    LLVMTypeRef[] arg_types = {intptr_t(context), ptr_t(int128_t(context))};
+                    LLVMTypeRef ret_type = int32_t(context);
+                    LLVMTypeRef f_type = LLVMFunctionType(ret_type, arg_types, false);
+                    LLVMValueRef function = LLVMAddFunction(module, name, f_type);
+                    LLVMValueRef[] args = LLVMGetParams(function);
+
+                    LLVMPositionBuilderAtEnd(builder, LLVMAppendBasicBlock(function, ""));
+                    LLVMValueRef store = LLVMBuildStore(builder,
+                            const_int128(context, ALL_CAPS, 0), args[1]);
+                    LLVMSetAlignment(store, 1);
+
+                    LLVMBuildRet(builder, const_int32(context, JVMTI_ERROR_NONE));
+                }, name, JVMTI_SCOPE);
+                INTERFACE_COPY.copyFrom(getJVMTIInterface());
+                INTERFACE_COPY.set(ADDRESS, GPC_OFFSET, getter);
+            }
+        }
+        putWordN(JVMTI_ENV, Holder.INTERFACE_COPY.nativeAddress());
+        JavaForeignAccess.addOrCleanupIfFail(JVMTI_SCOPE.scope(),
+                () -> putWordN(JVMTI_ENV, getJVMTIInterface().nativeAddress()));
+    }
+
     @Keep
     @SuppressWarnings("SameParameterValue")
     private abstract static class Native {
@@ -632,6 +668,38 @@ public final class JVMTI {
         @LibrarySymbol(name = "ForceEarlyReturnVoid")
         @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT})
         abstract int ForceEarlyReturnVoid(long env, Object thread);
+
+        @LibrarySymbol(name = "PopFrame")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT})
+        abstract int PopFrame(long env, Object thread);
+
+        @LibrarySymbol(name = "GetFrameCount")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, LONG_AS_WORD})
+        abstract int GetFrameCount(long env, Object thread, long count_ptr);
+
+        @LibrarySymbol(name = "GetLocalInstance")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, LONG_AS_WORD})
+        abstract int GetLocalInstance(long env, Object thread, int depth, long value_ptr);
+
+        @LibrarySymbol(name = "GetLocalObject")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        abstract int GetLocalObject(long env, Object thread, int depth, int slot, long value_ptr);
+
+        @LibrarySymbol(name = "GetLocalInt")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        abstract int GetLocalInt(long env, Object thread, int depth, int slot, long value_ptr);
+
+        @LibrarySymbol(name = "GetLocalLong")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        abstract int GetLocalLong(long env, Object thread, int depth, int slot, long value_ptr);
+
+        @LibrarySymbol(name = "GetLocalFloat")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        abstract int GetLocalFloat(long env, Object thread, int depth, int slot, long value_ptr);
+
+        @LibrarySymbol(name = "GetLocalDouble")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        abstract int GetLocalDouble(long env, Object thread, int depth, int slot, long value_ptr);
 
         static final Native INSTANCE = AndroidUnsafe.allocateInstance(
                 BulkLinker.processSymbols(JVMTI_SCOPE, Native.class, getJVMTIInterfaceLookup()));
@@ -766,37 +834,6 @@ public final class JVMTI {
         }
     }
 
-    public static void ForceAllPotentialCapabilities() throws JVMTIException {
-        class Holder {
-            private static final long ALL_CAPS = (~0L) >>> (64 - 41);
-            private static final long GPC_OFFSET = JVMTI_INTERFACE_LAYOUT.
-                    byteOffset(groupElement("GetPotentialCapabilities"));
-            static final MemorySegment INTERFACE_COPY =
-                    JVMTI_SCOPE.allocate(JVMTI_INTERFACE_LAYOUT);
-
-            static {
-                final String name = "function";
-                MemorySegment getter = generateFunctionCodeSegment((context, module, builder) -> {
-                    LLVMTypeRef[] arg_types = {intptr_t(context), ptr_t(int128_t(context))};
-                    LLVMTypeRef ret_type = int32_t(context);
-                    LLVMTypeRef f_type = LLVMFunctionType(ret_type, arg_types, false);
-                    LLVMValueRef function = LLVMAddFunction(module, name, f_type);
-                    LLVMValueRef[] args = LLVMGetParams(function);
-
-                    LLVMPositionBuilderAtEnd(builder, LLVMAppendBasicBlock(function, ""));
-                    LLVMValueRef store = LLVMBuildStore(builder,
-                            const_int128(context, ALL_CAPS, 0), args[1]);
-                    LLVMSetAlignment(store, 1);
-
-                    LLVMBuildRet(builder, const_int32(context, JVMTI_ERROR_NONE));
-                }, name, JVMTI_SCOPE);
-                INTERFACE_COPY.copyFrom(getJVMTIInterface());
-                INTERFACE_COPY.set(ADDRESS, GPC_OFFSET, getter);
-            }
-        }
-        putWordN(JVMTI_ENV, Holder.INTERFACE_COPY.nativeAddress());
-    }
-
     public static void GetPotentialCapabilities(JVMTICapabilities capabilities) throws JVMTIException {
         Objects.requireNonNull(capabilities);
         try (Arena scope = Arena.ofConfined()) {
@@ -856,7 +893,7 @@ public final class JVMTI {
         checkError(Native.INSTANCE.InterruptThread(JVMTI_ENV, thread));
     }
 
-    // TODO: what if we need to force return from current thread?
+    // TODO: what if we need to force return or pop frame for current thread?
 
     public static void ForceEarlyReturnObject(Thread thread, Object value) {
         checkError(Native.INSTANCE.ForceEarlyReturnObject(JVMTI_ENV, thread, value));
@@ -880,5 +917,87 @@ public final class JVMTI {
 
     public static void ForceEarlyReturnVoid(Thread thread) {
         checkError(Native.INSTANCE.ForceEarlyReturnVoid(JVMTI_ENV, thread));
+    }
+
+    public static void PopFrame(Thread thread) {
+        checkError(Native.INSTANCE.PopFrame(JVMTI_ENV, thread));
+    }
+
+    public static int GetFrameCount(Thread thread) {
+        // TODO: fix for current thread
+        try (Arena scope = Arena.ofConfined()) {
+            MemorySegment count_ptr = scope.allocate(JAVA_INT);
+            checkError(Native.INSTANCE.GetFrameCount(
+                    JVMTI_ENV, thread, count_ptr.nativeAddress()));
+            return count_ptr.get(JAVA_INT, 0);
+        }
+    }
+
+    public static Object GetLocalInstance(Thread thread, int depth) {
+        // TODO: fix for current thread
+        try (Arena scope = Arena.ofConfined()) {
+            // Note: value is word, but long is allocated, which may be bigger than necessary
+            MemorySegment value_ptr = scope.allocate(JAVA_LONG);
+            checkError(Native.INSTANCE.GetLocalInstance(
+                    JVMTI_ENV, thread, depth, value_ptr.nativeAddress()));
+            long ref = value_ptr.get(JAVA_LONG, 0);
+            Object out = JNIUtils.refToObject(ref);
+            JNIUtils.DeleteLocalRef(ref);
+            return out;
+        }
+    }
+
+    public static Object GetLocalObject(Thread thread, int depth, int slot) {
+        // TODO: fix for current thread
+        try (Arena scope = Arena.ofConfined()) {
+            // Note: value is word, but long is allocated, which may be bigger than necessary
+            MemorySegment value_ptr = scope.allocate(JAVA_LONG);
+            checkError(Native.INSTANCE.GetLocalObject(
+                    JVMTI_ENV, thread, depth, slot, value_ptr.nativeAddress()));
+            long ref = value_ptr.get(JAVA_LONG, 0);
+            Object out = JNIUtils.refToObject(ref);
+            JNIUtils.DeleteLocalRef(ref);
+            return out;
+        }
+    }
+
+    public static int GetLocalInt(Thread thread, int depth, int slot) {
+        // TODO: fix for current thread
+        try (Arena scope = Arena.ofConfined()) {
+            MemorySegment value_ptr = scope.allocate(JAVA_INT);
+            checkError(Native.INSTANCE.GetLocalInt(
+                    JVMTI_ENV, thread, depth, slot, value_ptr.nativeAddress()));
+            return value_ptr.get(JAVA_INT, 0);
+        }
+    }
+
+    public static long GetLocalLong(Thread thread, int depth, int slot) {
+        // TODO: fix for current thread
+        try (Arena scope = Arena.ofConfined()) {
+            MemorySegment value_ptr = scope.allocate(JAVA_LONG);
+            checkError(Native.INSTANCE.GetLocalLong(
+                    JVMTI_ENV, thread, depth, slot, value_ptr.nativeAddress()));
+            return value_ptr.get(JAVA_LONG, 0);
+        }
+    }
+
+    public static float GetLocalFloat(Thread thread, int depth, int slot) {
+        // TODO: fix for current thread
+        try (Arena scope = Arena.ofConfined()) {
+            MemorySegment value_ptr = scope.allocate(JAVA_FLOAT);
+            checkError(Native.INSTANCE.GetLocalFloat(
+                    JVMTI_ENV, thread, depth, slot, value_ptr.nativeAddress()));
+            return value_ptr.get(JAVA_FLOAT, 0);
+        }
+    }
+
+    public static double GetLocalDouble(Thread thread, int depth, int slot) {
+        // TODO: fix for current thread
+        try (Arena scope = Arena.ofConfined()) {
+            MemorySegment value_ptr = scope.allocate(JAVA_DOUBLE);
+            checkError(Native.INSTANCE.GetLocalDouble(
+                    JVMTI_ENV, thread, depth, slot, value_ptr.nativeAddress()));
+            return value_ptr.get(JAVA_DOUBLE, 0);
+        }
     }
 }

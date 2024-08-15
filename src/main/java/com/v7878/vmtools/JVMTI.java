@@ -701,6 +701,26 @@ public final class JVMTI {
         @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalDouble(long env, Object thread, int depth, int slot, long value_ptr);
 
+        @LibrarySymbol(name = "SetLocalObject")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, OBJECT})
+        abstract int SetLocalObject(long env, Object thread, int depth, int slot, Object value);
+
+        @LibrarySymbol(name = "SetLocalInt")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, INT})
+        abstract int SetLocalInt(long env, Object thread, int depth, int slot, int value);
+
+        @LibrarySymbol(name = "SetLocalLong")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG})
+        abstract int SetLocalLong(long env, Object thread, int depth, int slot, long value);
+
+        @LibrarySymbol(name = "SetLocalFloat")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, FLOAT})
+        abstract int SetLocalFloat(long env, Object thread, int depth, int slot, float value);
+
+        @LibrarySymbol(name = "SetLocalDouble")
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, DOUBLE})
+        abstract int SetLocalDouble(long env, Object thread, int depth, int slot, double value);
+
         static final Native INSTANCE = AndroidUnsafe.allocateInstance(
                 BulkLinker.processSymbols(JVMTI_SCOPE, Native.class, getJVMTIInterfaceLookup()));
     }
@@ -940,6 +960,7 @@ public final class JVMTI {
             MemorySegment value_ptr = scope.allocate(JAVA_LONG);
             checkError(Native.INSTANCE.GetLocalInstance(
                     JVMTI_ENV, thread, depth, value_ptr.nativeAddress()));
+            //FIXME!!!
             long ref = value_ptr.get(JAVA_LONG, 0);
             Object out = JNIUtils.refToObject(ref);
             JNIUtils.DeleteLocalRef(ref);
@@ -954,6 +975,7 @@ public final class JVMTI {
             MemorySegment value_ptr = scope.allocate(JAVA_LONG);
             checkError(Native.INSTANCE.GetLocalObject(
                     JVMTI_ENV, thread, depth, slot, value_ptr.nativeAddress()));
+            //FIXME!!!
             long ref = value_ptr.get(JAVA_LONG, 0);
             Object out = JNIUtils.refToObject(ref);
             JNIUtils.DeleteLocalRef(ref);
@@ -999,5 +1021,25 @@ public final class JVMTI {
                     JVMTI_ENV, thread, depth, slot, value_ptr.nativeAddress()));
             return value_ptr.get(JAVA_DOUBLE, 0);
         }
+    }
+
+    public static void SetLocalObject(Thread thread, int depth, int slot, Object value) {
+        checkError(Native.INSTANCE.SetLocalObject(JVMTI_ENV, thread, depth, slot, value));
+    }
+
+    public static void SetLocalInt(Thread thread, int depth, int slot, int value) {
+        checkError(Native.INSTANCE.SetLocalInt(JVMTI_ENV, thread, depth, slot, value));
+    }
+
+    public static void SetLocalLong(Thread thread, int depth, int slot, long value) {
+        checkError(Native.INSTANCE.SetLocalLong(JVMTI_ENV, thread, depth, slot, value));
+    }
+
+    public static void SetLocalFloat(Thread thread, int depth, int slot, float value) {
+        checkError(Native.INSTANCE.SetLocalFloat(JVMTI_ENV, thread, depth, slot, value));
+    }
+
+    public static void SetLocalDouble(Thread thread, int depth, int slot, double value) {
+        checkError(Native.INSTANCE.SetLocalDouble(JVMTI_ENV, thread, depth, slot, value));
     }
 }

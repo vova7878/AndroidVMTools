@@ -245,6 +245,7 @@ public class JVMTIEvents {
     }
 
     public static void setBreakpointCallback(BreakpointCallback callback) {
+        //TODO: change upcall to hand-written stub (because callback has jni env already)
         class Holder {
             static BreakpointCallback java_callback;
             static final long OFFSET = JVMTI_EVENT_CALLBACKS_LAYOUT

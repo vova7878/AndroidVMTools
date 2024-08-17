@@ -678,47 +678,47 @@ public final class JVMTI {
         abstract int GetFrameCount(long env, Object thread, long count_ptr);
 
         @LibrarySymbol(name = "GetLocalInstance")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, LONG_AS_WORD})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, LONG_AS_WORD})
         abstract int GetLocalInstance(long env, Object thread, int depth, long value_ptr);
 
         @LibrarySymbol(name = "GetLocalObject")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalObject(long env, Object thread, int depth, int slot, long value_ptr);
 
         @LibrarySymbol(name = "GetLocalInt")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalInt(long env, Object thread, int depth, int slot, long value_ptr);
 
         @LibrarySymbol(name = "GetLocalLong")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalLong(long env, Object thread, int depth, int slot, long value_ptr);
 
         @LibrarySymbol(name = "GetLocalFloat")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalFloat(long env, Object thread, int depth, int slot, long value_ptr);
 
         @LibrarySymbol(name = "GetLocalDouble")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalDouble(long env, Object thread, int depth, int slot, long value_ptr);
 
         @LibrarySymbol(name = "SetLocalObject")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, OBJECT})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, OBJECT})
         abstract int SetLocalObject(long env, Object thread, int depth, int slot, Object value);
 
         @LibrarySymbol(name = "SetLocalInt")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, INT})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, INT})
         abstract int SetLocalInt(long env, Object thread, int depth, int slot, int value);
 
         @LibrarySymbol(name = "SetLocalLong")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG})
         abstract int SetLocalLong(long env, Object thread, int depth, int slot, long value);
 
         @LibrarySymbol(name = "SetLocalFloat")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, FLOAT})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, FLOAT})
         abstract int SetLocalFloat(long env, Object thread, int depth, int slot, float value);
 
         @LibrarySymbol(name = "SetLocalDouble")
-        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, DOUBLE})
+        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, DOUBLE})
         abstract int SetLocalDouble(long env, Object thread, int depth, int slot, double value);
 
         static final Native INSTANCE = AndroidUnsafe.allocateInstance(
@@ -943,18 +943,25 @@ public final class JVMTI {
         checkError(Native.INSTANCE.PopFrame(JVMTI_ENV, thread));
     }
 
+    private static boolean isCurrent(Thread thread) {
+        return thread == Thread.currentThread();
+    }
+
+    private static final int STUB_DEPTH = 2;
+
     public static int GetFrameCount(Thread thread) {
-        // TODO: fix for current thread
+        int out;
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment count_ptr = scope.allocate(JAVA_INT);
             checkError(Native.INSTANCE.GetFrameCount(
                     JVMTI_ENV, thread, count_ptr.nativeAddress()));
-            return count_ptr.get(JAVA_INT, 0);
+            out = count_ptr.get(JAVA_INT, 0);
         }
+        return isCurrent(thread) ? out - STUB_DEPTH : out;
     }
 
     public static Object GetLocalInstance(Thread thread, int depth) {
-        // TODO: fix for current thread
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             // Note: value is word, but long is allocated, which may be bigger than necessary
             MemorySegment value_ptr = scope.allocate(JAVA_LONG);
@@ -969,7 +976,7 @@ public final class JVMTI {
     }
 
     public static Object GetLocalObject(Thread thread, int depth, int slot) {
-        // TODO: fix for current thread
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             // Note: value is word, but long is allocated, which may be bigger than necessary
             MemorySegment value_ptr = scope.allocate(JAVA_LONG);
@@ -984,7 +991,7 @@ public final class JVMTI {
     }
 
     public static int GetLocalInt(Thread thread, int depth, int slot) {
-        // TODO: fix for current thread
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment value_ptr = scope.allocate(JAVA_INT);
             checkError(Native.INSTANCE.GetLocalInt(
@@ -994,7 +1001,7 @@ public final class JVMTI {
     }
 
     public static long GetLocalLong(Thread thread, int depth, int slot) {
-        // TODO: fix for current thread
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment value_ptr = scope.allocate(JAVA_LONG);
             checkError(Native.INSTANCE.GetLocalLong(
@@ -1004,7 +1011,7 @@ public final class JVMTI {
     }
 
     public static float GetLocalFloat(Thread thread, int depth, int slot) {
-        // TODO: fix for current thread
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment value_ptr = scope.allocate(JAVA_FLOAT);
             checkError(Native.INSTANCE.GetLocalFloat(
@@ -1014,7 +1021,7 @@ public final class JVMTI {
     }
 
     public static double GetLocalDouble(Thread thread, int depth, int slot) {
-        // TODO: fix for current thread
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment value_ptr = scope.allocate(JAVA_DOUBLE);
             checkError(Native.INSTANCE.GetLocalDouble(
@@ -1024,22 +1031,27 @@ public final class JVMTI {
     }
 
     public static void SetLocalObject(Thread thread, int depth, int slot, Object value) {
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         checkError(Native.INSTANCE.SetLocalObject(JVMTI_ENV, thread, depth, slot, value));
     }
 
     public static void SetLocalInt(Thread thread, int depth, int slot, int value) {
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         checkError(Native.INSTANCE.SetLocalInt(JVMTI_ENV, thread, depth, slot, value));
     }
 
     public static void SetLocalLong(Thread thread, int depth, int slot, long value) {
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         checkError(Native.INSTANCE.SetLocalLong(JVMTI_ENV, thread, depth, slot, value));
     }
 
     public static void SetLocalFloat(Thread thread, int depth, int slot, float value) {
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         checkError(Native.INSTANCE.SetLocalFloat(JVMTI_ENV, thread, depth, slot, value));
     }
 
     public static void SetLocalDouble(Thread thread, int depth, int slot, double value) {
+        depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         checkError(Native.INSTANCE.SetLocalDouble(JVMTI_ENV, thread, depth, slot, value));
     }
 }

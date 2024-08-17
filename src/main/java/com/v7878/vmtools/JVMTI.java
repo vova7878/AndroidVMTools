@@ -947,7 +947,7 @@ public final class JVMTI {
         return thread == Thread.currentThread();
     }
 
-    private static final int STUB_DEPTH = 2;
+    private static final int STUB_DEPTH = 3;
 
     public static int GetFrameCount(Thread thread) {
         int out;
@@ -967,7 +967,6 @@ public final class JVMTI {
             MemorySegment value_ptr = scope.allocate(JAVA_LONG);
             checkError(Native.INSTANCE.GetLocalInstance(
                     JVMTI_ENV, thread, depth, value_ptr.nativeAddress()));
-            //FIXME!!!
             long ref = value_ptr.get(JAVA_LONG, 0);
             Object out = JNIUtils.refToObject(ref);
             JNIUtils.DeleteLocalRef(ref);
@@ -982,7 +981,6 @@ public final class JVMTI {
             MemorySegment value_ptr = scope.allocate(JAVA_LONG);
             checkError(Native.INSTANCE.GetLocalObject(
                     JVMTI_ENV, thread, depth, slot, value_ptr.nativeAddress()));
-            //FIXME!!!
             long ref = value_ptr.get(JAVA_LONG, 0);
             Object out = JNIUtils.refToObject(ref);
             JNIUtils.DeleteLocalRef(ref);

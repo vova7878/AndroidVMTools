@@ -1,12 +1,12 @@
-package com.v7878.vmtools;
+package com.v7878.ti;
 
 import static com.v7878.foreign.MemoryLayout.PathElement.groupElement;
 import static com.v7878.foreign.MemoryLayout.structLayout;
 import static com.v7878.foreign.ValueLayout.ADDRESS;
 import static com.v7878.foreign.ValueLayout.JAVA_LONG;
+import static com.v7878.ti.JVMTI.JVMTI_SCOPE;
 import static com.v7878.unsafe.AndroidUnsafe.IS64BIT;
 import static com.v7878.unsafe.foreign.ExtraLayouts.WORD;
-import static com.v7878.vmtools.JVMTI.JVMTI_SCOPE;
 
 import com.v7878.foreign.FunctionDescriptor;
 import com.v7878.foreign.GroupLayout;

@@ -1,4 +1,4 @@
-package com.v7878.vmtools;
+package com.v7878.ti;
 
 public final class JVMTIConstants {
     private JVMTIConstants() {

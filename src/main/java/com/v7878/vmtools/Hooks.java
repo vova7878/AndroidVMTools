@@ -57,9 +57,9 @@ public class Hooks {
                     // 57 ; push rdi
                     // 48 bf <m0 m1 m2 m3 m4 m5 m6 m7> ; movabs rdi, art_method
                     // c3 ; ret
-                    0x48, e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7],
+                    0x48, (byte) 0xbf, e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7],
                     0x57,
-                    0x48, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7],
+                    0x48, (byte) 0xbf, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7],
                     (byte) 0xc3
             };
             case ARM -> new byte[]{

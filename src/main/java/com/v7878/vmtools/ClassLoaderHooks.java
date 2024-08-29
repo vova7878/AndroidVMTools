@@ -4,8 +4,8 @@ import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.INTERFACE;
 import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.SUPER;
 import static com.v7878.dex.bytecode.CodeBuilder.Op.GET_OBJECT;
 import static com.v7878.dex.bytecode.CodeBuilder.Test.EQ;
-import static com.v7878.unsafe.ArtMethodUtils.makeExecutablePublicNonFinal;
-import static com.v7878.unsafe.ClassUtils.makeClassPublicNonFinal;
+import static com.v7878.unsafe.ArtMethodUtils.makeMethodInheritable;
+import static com.v7878.unsafe.ClassUtils.makeClassInheritable;
 import static com.v7878.unsafe.DexFileUtils.loadClass;
 import static com.v7878.unsafe.DexFileUtils.openDexFile;
 import static com.v7878.unsafe.DexFileUtils.setTrusted;
@@ -56,10 +56,10 @@ public class ClassLoaderHooks {
         Objects.requireNonNull(impl);
         synchronized (LOCK) {
             Class<?> lc = loader.getClass();
-            makeClassPublicNonFinal(lc);
+            makeClassInheritable(lc);
             // note: maybe super method
             Method fc = searchMethod(getMethods(lc), "findClass", String.class);
-            makeExecutablePublicNonFinal(fc);
+            makeMethodInheritable(fc);
 
             String hook_name = lc.getName() + "$$$SyntheticHook";
             TypeId hook_id = TypeId.of(hook_name);

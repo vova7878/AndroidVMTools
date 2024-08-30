@@ -1,7 +1,9 @@
 package com.v7878.vmtools;
 
 import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.INTERFACE;
+import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.SUPER;
 import static com.v7878.dex.bytecode.CodeBuilder.Op.GET_OBJECT;
+import static com.v7878.dex.bytecode.CodeBuilder.Test.EQ;
 import static com.v7878.unsafe.ArtMethodUtils.makeMethodInheritable;
 import static com.v7878.unsafe.ClassUtils.makeClassInheritable;
 import static com.v7878.unsafe.DexFileUtils.loadClass;
@@ -93,6 +95,11 @@ public class ClassLoaderHooks {
                             b.l(0), b.this_(), b.p(0))
                     .move_result_object(b.l(0))
                     .check_cast(b.l(0), TypeId.of(Class.class))
+                    .if_testz(EQ, b.l(0), ":null")
+                    .return_object(b.l(0))
+                    .label(":null")
+                    .invoke(SUPER, MethodId.of(fc), b.this_(), b.p(0))
+                    .move_result_object(b.l(0))
                     .return_object(b.l(0))
             ));
 

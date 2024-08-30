@@ -1,9 +1,7 @@
 package com.v7878.vmtools;
 
 import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.INTERFACE;
-import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.SUPER;
 import static com.v7878.dex.bytecode.CodeBuilder.Op.GET_OBJECT;
-import static com.v7878.dex.bytecode.CodeBuilder.Test.EQ;
 import static com.v7878.unsafe.ArtMethodUtils.makeMethodInheritable;
 import static com.v7878.unsafe.ClassUtils.makeClassInheritable;
 import static com.v7878.unsafe.DexFileUtils.loadClass;
@@ -11,6 +9,7 @@ import static com.v7878.unsafe.DexFileUtils.openDexFile;
 import static com.v7878.unsafe.DexFileUtils.setTrusted;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getMethods;
+import static com.v7878.unsafe.Reflection.unreflectDirect;
 import static com.v7878.unsafe.Utils.assert_;
 import static com.v7878.unsafe.Utils.nothrows_run;
 import static com.v7878.unsafe.Utils.searchMethod;
@@ -25,7 +24,9 @@ import com.v7878.dex.FieldId;
 import com.v7878.dex.MethodId;
 import com.v7878.dex.ProtoId;
 import com.v7878.dex.TypeId;
+import com.v7878.unsafe.AndroidUnsafe;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -38,15 +39,25 @@ public class ClassLoaderHooks {
     private static final Object LOCK = new Object();
 
     @FunctionalInterface
-    public interface FindClassI {
-        Class<?> findClass(ClassLoader thiz, String name) throws ClassNotFoundException;
+    public interface FindClassBackup {
+        Class<?> findClass(String name) throws ClassNotFoundException;
     }
 
-    private record FindClassCallback(FindClassI impl)
+    @FunctionalInterface
+    public interface FindClassI {
+        Class<?> findClass(ClassLoader thiz, String name,
+                           FindClassBackup original) throws ClassNotFoundException;
+    }
+
+    private record FindClassCallback(FindClassI impl, FindClassBackup original)
             implements BiFunction<ClassLoader, String, Class<?>> {
         @Override
         public Class<?> apply(ClassLoader thiz, String name) {
-            return nothrows_run(() -> impl.findClass(thiz, name));
+            try {
+                return impl.findClass(thiz, name, original);
+            } catch (ClassNotFoundException e) {
+                return AndroidUnsafe.throwException(e);
+            }
         }
     }
 
@@ -60,6 +71,8 @@ public class ClassLoaderHooks {
             // note: maybe super method
             Method fc = searchMethod(getMethods(lc), "findClass", String.class);
             makeMethodInheritable(fc);
+
+            MethodHandle original = unreflectDirect(fc);
 
             String hook_name = lc.getName() + "$$$SyntheticHook";
             TypeId hook_id = TypeId.of(hook_name);
@@ -80,11 +93,6 @@ public class ClassLoaderHooks {
                             b.l(0), b.this_(), b.p(0))
                     .move_result_object(b.l(0))
                     .check_cast(b.l(0), TypeId.of(Class.class))
-                    .if_testz(EQ, b.l(0), ":null")
-                    .return_object(b.l(0))
-                    .label(":null")
-                    .invoke(SUPER, MethodId.of(fc), b.this_(), b.p(0))
-                    .move_result_object(b.l(0))
                     .return_object(b.l(0))
             ));
 
@@ -92,7 +100,13 @@ public class ClassLoaderHooks {
             setTrusted(dex);
             Class<?> hook = loadClass(dex, hook_name, lc.getClassLoader());
             Field impl_f = getDeclaredField(hook, "impl");
-            nothrows_run(() -> impl_f.set(null, new FindClassCallback(impl)));
+            nothrows_run(() -> impl_f.set(null, new FindClassCallback(impl, name -> {
+                try {
+                    return (Class<?>) original.invokeExact(name);
+                } catch (Throwable th) {
+                    return AndroidUnsafe.throwException(th);
+                }
+            })));
 
             assert_(objectSizeField(lc) == objectSizeField(hook), AssertionError::new);
 

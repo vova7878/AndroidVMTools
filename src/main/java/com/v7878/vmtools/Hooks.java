@@ -1,22 +1,93 @@
 package com.v7878.vmtools;
 
+import static com.v7878.llvm.Core.LLVMAddFunction;
+import static com.v7878.llvm.Core.LLVMAppendBasicBlock;
+import static com.v7878.llvm.Core.LLVMBuildICmp;
+import static com.v7878.llvm.Core.LLVMBuildRet;
+import static com.v7878.llvm.Core.LLVMFunctionType;
+import static com.v7878.llvm.Core.LLVMGetParams;
+import static com.v7878.llvm.Core.LLVMIntPredicate.LLVMIntEQ;
+import static com.v7878.llvm.Core.LLVMPositionBuilderAtEnd;
+import static com.v7878.llvm.Types.LLVMTypeRef;
+import static com.v7878.llvm.Types.LLVMValueRef;
+import static com.v7878.misc.Version.CORRECT_SDK_INT;
+import static com.v7878.unsafe.AndroidUnsafe.PAGE_SIZE;
 import static com.v7878.unsafe.ArtMethodUtils.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtMethodUtils.kAccFastInterpreterToInterpreterInvoke;
 import static com.v7878.unsafe.ArtMethodUtils.kAccPreCompiled;
 import static com.v7878.unsafe.InstructionSet.CURRENT_INSTRUCTION_SET;
 import static com.v7878.unsafe.Reflection.getArtMethod;
+import static com.v7878.unsafe.Utils.shouldNotHappen;
+import static com.v7878.unsafe.foreign.LibArt.ART;
+import static com.v7878.unsafe.llvm.LLVMGlobals.int1_t;
+import static com.v7878.unsafe.llvm.LLVMGlobals.intptr_t;
+import static com.v7878.unsafe.llvm.LLVMUtils.const_intptr;
+import static com.v7878.unsafe.llvm.LLVMUtils.generateFunctionCodeArray;
+
+import android.system.ErrnoException;
+import android.system.OsConstants;
 
 import com.v7878.foreign.Arena;
 import com.v7878.foreign.MemorySegment;
+import com.v7878.misc.Math;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
 import com.v7878.unsafe.NativeCodeBlob;
+import com.v7878.unsafe.io.IOUtils;
 
 import java.lang.reflect.Executable;
 import java.lang.reflect.Modifier;
 import java.util.Objects;
 
 public class Hooks {
+
+    private static final int PROT_RX = OsConstants.PROT_READ | OsConstants.PROT_EXEC;
+    private static final int PROT_RWX = PROT_RX | OsConstants.PROT_WRITE;
+
+    private static void mprotect(long address, long length, int prot) {
+        long end = Math.roundUpUL(address + length, PAGE_SIZE);
+        long begin = Math.roundDownUL(address, PAGE_SIZE);
+        try {
+            IOUtils.mprotect(begin, end - begin, prot);
+        } catch (ErrnoException e) {
+            throw shouldNotHappen(e);
+        }
+    }
+
+    static {
+        if (CORRECT_SDK_INT < 33) {
+            MemorySegment art_checker = ART.findOrThrow(
+                    "_ZN3art11ClassLinker30ShouldUseInterpreterEntrypointEPNS_9ArtMethodEPKv");
+            final String name = "function";
+            byte[] checker = generateFunctionCodeArray((context, module, builder) -> {
+                LLVMTypeRef[] arg_types = {intptr_t(context), intptr_t(context)};
+                LLVMTypeRef ret_type = int1_t(context);
+                LLVMTypeRef f_type = LLVMFunctionType(ret_type, arg_types, false);
+                LLVMValueRef function = LLVMAddFunction(module, name, f_type);
+                LLVMValueRef[] args = LLVMGetParams(function);
+
+                //LLVMValueRef method = args[0];
+                LLVMValueRef quick_code = args[1];
+
+                LLVMPositionBuilderAtEnd(builder, LLVMAppendBasicBlock(function, ""));
+                LLVMValueRef test_code_null = LLVMBuildICmp(builder, LLVMIntEQ,
+                        quick_code, const_intptr(context, 0), "");
+
+                //TODO
+                //if (method->IsNative() || method->IsProxyMethod()) { return false; }
+                //if (quick_code == nullptr) { return true; }
+                //if (Thread::Current()->IsForceInterpreter()) { return true; }
+                //if (Thread::Current()->IsAsyncExceptionPending()) { return true; }
+                //return Runtime::Current()->GetClassLinker()->IsQuickToInterpreterBridge(quick_code);
+
+                LLVMBuildRet(builder, test_code_null);
+            }, name);
+            mprotect(art_checker.nativeAddress(), checker.length, PROT_RWX);
+            art_checker.reinterpret(checker.length).copyFrom(MemorySegment.ofArray(checker));
+            mprotect(art_checker.nativeAddress(), checker.length, PROT_RX);
+        }
+    }
+
     public static void deoptimize(Executable ex) {
         ClassUtils.ensureClassVisiblyInitialized(ex.getDeclaringClass());
         ArtMethodUtils.changeExecutableFlags(ex, kAccPreCompiled, kAccCompileDontBother);

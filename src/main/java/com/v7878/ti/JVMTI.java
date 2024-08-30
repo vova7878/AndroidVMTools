@@ -575,6 +575,7 @@ public final class JVMTI {
                     LLVMValueRef[] args = LLVMGetParams(function);
 
                     LLVMPositionBuilderAtEnd(builder, LLVMAppendBasicBlock(function, ""));
+                    //TODO: check caps and return JVMTI_ERROR_NULL_POINTER if null
                     LLVMValueRef store = LLVMBuildStore(builder,
                             const_int128(context, ALL_CAPS, 0), args[1]);
                     LLVMSetAlignment(store, 1);

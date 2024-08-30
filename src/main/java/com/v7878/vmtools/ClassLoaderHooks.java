@@ -102,7 +102,7 @@ public class ClassLoaderHooks {
             Field impl_f = getDeclaredField(hook, "impl");
             nothrows_run(() -> impl_f.set(null, new FindClassCallback(impl, name -> {
                 try {
-                    return (Class<?>) original.invokeExact(name);
+                    return (Class<?>) original.invoke(loader, name);
                 } catch (Throwable th) {
                     return AndroidUnsafe.throwException(th);
                 }

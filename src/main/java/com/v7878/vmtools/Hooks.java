@@ -26,6 +26,7 @@ import static com.v7878.unsafe.llvm.LLVMUtils.generateFunctionCodeArray;
 
 import android.system.ErrnoException;
 import android.system.OsConstants;
+import android.util.Log;
 
 import com.v7878.foreign.Arena;
 import com.v7878.foreign.MemorySegment;
@@ -33,6 +34,7 @@ import com.v7878.misc.Math;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
 import com.v7878.unsafe.NativeCodeBlob;
+import com.v7878.unsafe.Utils;
 import com.v7878.unsafe.io.IOUtils;
 
 import java.lang.reflect.Executable;
@@ -55,9 +57,13 @@ public class Hooks {
     }
 
     static {
-        if (CORRECT_SDK_INT < 33) {
-            MemorySegment art_checker = ART.findOrThrow(
-                    "_ZN3art11ClassLinker30ShouldUseInterpreterEntrypointEPNS_9ArtMethodEPKv");
+        if (CORRECT_SDK_INT < 33) linker_hook:{
+            MemorySegment art_checker = ART.find("_ZN3art11ClassLinker30ShouldUseInterpreterEntrypointEPNS_9ArtMethodEPKv").orElse(null);
+            if (art_checker == null) {
+                //TODO
+                Log.e(Utils.LOG_TAG, "Can`t find ClassLinker::ShouldUseInterpreterEntrypoint, hooks may not work in debug mode");
+                break linker_hook;
+            }
             final String name = "function";
             byte[] checker = generateFunctionCodeArray((context, module, builder) -> {
                 LLVMTypeRef[] arg_types = {intptr_t(context), intptr_t(context)};

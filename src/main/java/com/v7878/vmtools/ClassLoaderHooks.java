@@ -1,6 +1,9 @@
 package com.v7878.vmtools;
 
+import static com.v7878.dex.DexConstants.ACC_PUBLIC;
+import static com.v7878.dex.DexConstants.ACC_STATIC;
 import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.INTERFACE;
+import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.STATIC;
 import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.SUPER;
 import static com.v7878.dex.bytecode.CodeBuilder.Op.GET_OBJECT;
 import static com.v7878.dex.bytecode.CodeBuilder.Test.EQ;
@@ -11,7 +14,6 @@ import static com.v7878.unsafe.DexFileUtils.openDexFile;
 import static com.v7878.unsafe.DexFileUtils.setTrusted;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getMethods;
-import static com.v7878.unsafe.Reflection.unreflectDirect;
 import static com.v7878.unsafe.Utils.assert_;
 import static com.v7878.unsafe.Utils.nothrows_run;
 import static com.v7878.unsafe.Utils.searchMethod;
@@ -28,7 +30,6 @@ import com.v7878.dex.ProtoId;
 import com.v7878.dex.TypeId;
 import com.v7878.unsafe.AndroidUnsafe;
 
-import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -42,17 +43,26 @@ public class ClassLoaderHooks {
 
     @FunctionalInterface
     public interface FindClassBackup {
-        Class<?> findClass(String name) throws ClassNotFoundException;
+        Class<?> findClass(ClassLoader loader, String name) throws ClassNotFoundException;
     }
 
     @FunctionalInterface
     public interface FindClassI {
-        Class<?> findClass(ClassLoader thiz, String name,
+        Class<?> findClass(ClassLoader loader, String name,
                            FindClassBackup original) throws ClassNotFoundException;
     }
 
-    private record FindClassCallback(FindClassI impl, FindClassBackup original)
+    private static final class FindClassCallback
             implements BiFunction<ClassLoader, String, Class<?>> {
+        private final FindClassI impl;
+        private final FindClassBackup original;
+
+        private FindClassCallback(
+                FindClassI impl, BiFunction<ClassLoader, String, Class<?>> backup) {
+            this.impl = impl;
+            this.original = backup::apply;
+        }
+
         @Override
         public Class<?> apply(ClassLoader thiz, String name) {
             try {
@@ -63,7 +73,6 @@ public class ClassLoaderHooks {
         }
     }
 
-    //TODO: add a way to call original findClass method
     public static void hookFindClass(ClassLoader loader, FindClassI impl) {
         Objects.requireNonNull(loader);
         Objects.requireNonNull(impl);
@@ -74,7 +83,7 @@ public class ClassLoaderHooks {
             Method fc = searchMethod(getMethods(lc), "findClass", String.class);
             makeMethodInheritable(fc);
 
-            MethodHandle original = unreflectDirect(fc);
+            ProtoId apply_proto = new ProtoId(TypeId.OBJECT, TypeId.OBJECT, TypeId.OBJECT);
 
             String hook_name = lc.getName() + "$$$SyntheticHook";
             TypeId hook_id = TypeId.of(hook_name);
@@ -84,14 +93,13 @@ public class ClassLoaderHooks {
             hook_def.getClassData().getStaticFields().add(new EncodedField(
                     impl_f_id, Modifier.STATIC, null
             ));
+            var hook_find_id = new MethodId(hook_id, new ProtoId(
+                    TypeId.of(Class.class), TypeId.of(String.class)), "findClass");
             hook_def.getClassData().getVirtualMethods().add(new EncodedMethod(
-                    new MethodId(hook_id, new ProtoId(TypeId.of(Class.class),
-                            TypeId.of(String.class)), "findClass"),
-                    Modifier.PUBLIC).withCode(1, b -> b
+                    hook_find_id, ACC_PUBLIC).withCode(1, b -> b
                     .sop(GET_OBJECT, b.l(0), impl_f_id)
-                    .invoke(INTERFACE, new MethodId(TypeId.of(BiFunction.class), new ProtoId(
-                                    TypeId.of(Object.class), TypeId.of(Object.class),
-                                    TypeId.of(Object.class)), "apply"),
+                    .invoke(INTERFACE, new MethodId(
+                                    TypeId.of(BiFunction.class), apply_proto, "apply"),
                             b.l(0), b.this_(), b.p(0))
                     .move_result_object(b.l(0))
                     .check_cast(b.l(0), TypeId.of(Class.class))
@@ -102,18 +110,41 @@ public class ClassLoaderHooks {
                     .move_result_object(b.l(0))
                     .return_object(b.l(0))
             ));
+            var super_find_id = new MethodId(hook_id, new ProtoId(TypeId.of(Class.class),
+                    hook_id, TypeId.of(String.class)), "superFindClass");
+            hook_def.getClassData().getDirectMethods().add(new EncodedMethod(super_find_id,
+                    ACC_PUBLIC | ACC_STATIC).withCode(0, b -> b
+                    .invoke(SUPER, hook_find_id, b.p(0), b.p(1))
+                    .move_result_object(b.v(0))
+                    .return_object(b.v(0))
+            ));
 
-            DexFile dex = openDexFile(new Dex(hook_def).compile());
+            String backup_name = hook_name + "$$$Backup";
+            TypeId backup_id = TypeId.of(backup_name);
+            ClassDef backup_def = new ClassDef(backup_id);
+            backup_def.setSuperClass(TypeId.OBJECT);
+            backup_def.getInterfaces().add(TypeId.of(BiFunction.class));
+            var backup_find_id = new MethodId(backup_id, apply_proto, "apply");
+            backup_def.getClassData().getVirtualMethods().add(new EncodedMethod(
+                    backup_find_id, ACC_PUBLIC).withCode(0, b -> b
+                    .check_cast(b.p(0), hook_id)
+                    .check_cast(b.p(1), TypeId.of(String.class))
+                    .invoke(STATIC, super_find_id, b.p(0), b.p(1))
+                    .move_result_object(b.v(0))
+                    .return_object(b.v(0))
+            ));
+
+            DexFile dex = openDexFile(new Dex(hook_def, backup_def).compile());
             setTrusted(dex);
+
             Class<?> hook = loadClass(dex, hook_name, lc.getClassLoader());
+            Class<?> backup = loadClass(dex, backup_name, lc.getClassLoader());
+
+            //noinspection unchecked
+            var backup_instance = (BiFunction<ClassLoader, String, Class<?>>)
+                    AndroidUnsafe.allocateInstance(backup);
             Field impl_f = getDeclaredField(hook, "impl");
-            nothrows_run(() -> impl_f.set(null, new FindClassCallback(impl, name -> {
-                try {
-                    return (Class<?>) original.invoke(loader, name);
-                } catch (Throwable th) {
-                    return AndroidUnsafe.throwException(th);
-                }
-            })));
+            nothrows_run(() -> impl_f.set(null, new FindClassCallback(impl, backup_instance)));
 
             assert_(objectSizeField(lc) == objectSizeField(hook), AssertionError::new);
 

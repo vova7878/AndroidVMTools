@@ -26,13 +26,12 @@ android {
 }
 
 dependencies {
-    compileOnly libs.keepannotation
-
     api libs.androidpanama
     api libs.androidunsafe
     api libs.llvm
 
     implementation libs.androidmisc
+    implementation libs.r8.annotations
 }
 
 publishing {

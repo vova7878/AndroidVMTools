@@ -1,14 +1,13 @@
 [versions]
-agp = "8.5.2"
+agp = "8.6.0"
 androidmisc = "v0.0.4"
-keepannotation = "v0.0.2"
-panamaport = "3b666d638f"
+panamaport = "0cce258a9c"
 
 [libraries]
 androidmisc = { module = "com.github.vova7878:AndroidMisc", version.ref = "androidmisc" }
 androidpanama = { module = "com.github.vova7878.PanamaPort:AndroidPanama", version.ref = "panamaport" }
 androidunsafe = { module = "com.github.vova7878.PanamaPort:AndroidUnsafe", version.ref = "panamaport" }
-keepannotation = { module = "com.github.vova7878:KeepAnnotation", version.ref = "keepannotation" }
+r8-annotations = { module = "com.github.vova7878.PanamaPort:R8Annotations", version.ref = "panamaport" }
 llvm = { module = "com.github.vova7878.PanamaPort:LLVM", version.ref = "panamaport" }
 
 [plugins]

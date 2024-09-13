@@ -3,15 +3,21 @@ package com.v7878.vmtools;
 import static com.v7878.unsafe.ArtMethodUtils.getExecutableEntryPoint;
 import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 
-import androidx.annotation.Keep;
+import com.v7878.r8.annotations.DoNotObfuscate;
+import com.v7878.r8.annotations.DoNotShrink;
+import com.v7878.r8.annotations.KeepCodeAttribute;
 
 public class EntryPoints {
     @SuppressWarnings("unused")
     private static abstract class Test {
-        @Keep
+        @DoNotShrink
+        @DoNotObfuscate
+        @KeepCodeAttribute
         abstract void interpreter();
 
-        @Keep
+        @DoNotShrink
+        @DoNotObfuscate
+        @KeepCodeAttribute
         native void jni();
     }
 

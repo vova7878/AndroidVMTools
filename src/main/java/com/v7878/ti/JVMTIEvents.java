@@ -13,8 +13,10 @@ import com.v7878.foreign.GroupLayout;
 import com.v7878.foreign.Linker;
 import com.v7878.foreign.MemorySegment;
 import com.v7878.unsafe.JNIUtils;
+import com.v7878.unsafe.invoke.EmulatedStackFrame;
 import com.v7878.unsafe.invoke.EmulatedStackFrame.StackFrameAccessor;
 import com.v7878.unsafe.invoke.Transformers;
+import com.v7878.unsafe.invoke.Transformers.AbstractTransformer;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
@@ -256,18 +258,21 @@ public class JVMTIEvents {
             static final FunctionDescriptor DESCRIPTOR = FunctionDescriptor.ofVoid(
                     WORD, WORD, WORD, WORD, JAVA_LONG);
             static final MethodHandle invoker = Transformers.makeTransformer(
-                    TYPE, (thiz, stack) -> {
-                        var tmp_callback = java_callback;
-                        if (tmp_callback == null) {
-                            return;
+                    TYPE, new AbstractTransformer() {
+                        @Override
+                        protected void transform(MethodHandle thiz, EmulatedStackFrame stack) {
+                            var tmp_callback = java_callback;
+                            if (tmp_callback == null) {
+                                return;
+                            }
+                            var accessor = stack.createAccessor();
+                            nextWord(accessor); // jvmti_env
+                            nextWord(accessor); // jni_env
+                            var thread = (Thread) JNIUtils.refToObject(nextWord(accessor));
+                            var method = JNIUtils.ToReflectedMethod(nextWord(accessor));
+                            var location = accessor.nextLong();
+                            tmp_callback.invoke(thread, method, location);
                         }
-                        var accessor = stack.createAccessor();
-                        nextWord(accessor); // jvmti_env
-                        nextWord(accessor); // jni_env
-                        var thread = (Thread) JNIUtils.refToObject(nextWord(accessor));
-                        var method = JNIUtils.ToReflectedMethod(nextWord(accessor));
-                        var location = accessor.nextLong();
-                        tmp_callback.invoke(thread, method, location);
                     });
             static final MemorySegment native_callback = LINKER.upcallStub(
                     invoker, DESCRIPTOR, JVMTI_SCOPE);

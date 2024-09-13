@@ -96,8 +96,6 @@ import static com.v7878.unsafe.llvm.LLVMUtils.generateFunctionCodeSegment;
 
 import android.util.Pair;
 
-import androidx.annotation.Keep;
-
 import com.v7878.foreign.AddressLayout;
 import com.v7878.foreign.Arena;
 import com.v7878.foreign.GroupLayout;
@@ -106,6 +104,9 @@ import com.v7878.foreign.MemorySegment;
 import com.v7878.foreign.SymbolLookup;
 import com.v7878.llvm.Types.LLVMTypeRef;
 import com.v7878.llvm.Types.LLVMValueRef;
+import com.v7878.r8.annotations.DoNotOptimize;
+import com.v7878.r8.annotations.DoNotShrink;
+import com.v7878.r8.annotations.DoNotShrinkType;
 import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.ApiSensitive;
 import com.v7878.unsafe.JNIUtils;
@@ -124,7 +125,8 @@ public final class JVMTI {
     private JVMTI() {
     }
 
-    static final Arena JVMTI_SCOPE = JavaForeignAccess.createImplicitHeapArena(JVMTI.class);
+    @DoNotShrink
+    static final Arena JVMTI_SCOPE = Arena.ofAuto();
 
     public static final GroupLayout JVMTI_INTERFACE_LAYOUT = structLayout(
             ADDRESS.withName("reserved1"),
@@ -290,7 +292,8 @@ public final class JVMTI {
     @ApiSensitive
     public static final SymbolLookup JVMTI = LibDLExt.systemLibraryLookup(JVMTI_NAME, JVMTI_SCOPE);
 
-    @Keep
+    @DoNotShrinkType
+    @DoNotOptimize
     private abstract static class Init {
         @LibrarySymbol(name = "GetEnv")
         @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, LONG_AS_WORD, INT})
@@ -591,7 +594,8 @@ public final class JVMTI {
                 () -> putWordN(JVMTI_ENV, getJVMTIInterface().nativeAddress()));
     }
 
-    @Keep
+    @DoNotShrinkType
+    @DoNotOptimize
     @SuppressWarnings("SameParameterValue")
     private abstract static class Native {
         @LibrarySymbol(name = "RedefineClasses")

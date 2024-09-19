@@ -14,7 +14,6 @@ import static com.v7878.llvm.Core.LLVMAddFunction;
 import static com.v7878.llvm.Core.LLVMAppendBasicBlock;
 import static com.v7878.llvm.Core.LLVMBuildRet;
 import static com.v7878.llvm.Core.LLVMBuildStore;
-import static com.v7878.llvm.Core.LLVMFunctionType;
 import static com.v7878.llvm.Core.LLVMGetParams;
 import static com.v7878.llvm.Core.LLVMPositionBuilderAtEnd;
 import static com.v7878.llvm.Core.LLVMSetAlignment;
@@ -86,12 +85,13 @@ import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.OBJECT;
 import static com.v7878.unsafe.foreign.ExtraLayouts.WORD;
-import static com.v7878.unsafe.llvm.LLVMGlobals.int128_t;
-import static com.v7878.unsafe.llvm.LLVMGlobals.int32_t;
-import static com.v7878.unsafe.llvm.LLVMGlobals.intptr_t;
-import static com.v7878.unsafe.llvm.LLVMGlobals.ptr_t;
-import static com.v7878.unsafe.llvm.LLVMUtils.const_int128;
-import static com.v7878.unsafe.llvm.LLVMUtils.const_int32;
+import static com.v7878.unsafe.llvm.LLVMBuilder.const_int128;
+import static com.v7878.unsafe.llvm.LLVMBuilder.const_int32;
+import static com.v7878.unsafe.llvm.LLVMTypes.function_t;
+import static com.v7878.unsafe.llvm.LLVMTypes.int128_t;
+import static com.v7878.unsafe.llvm.LLVMTypes.int32_t;
+import static com.v7878.unsafe.llvm.LLVMTypes.intptr_t;
+import static com.v7878.unsafe.llvm.LLVMTypes.ptr_t;
 import static com.v7878.unsafe.llvm.LLVMUtils.generateFunctionCodeSegment;
 
 import android.util.Pair;
@@ -317,7 +317,7 @@ public final class JVMTI {
     static {
         final int kArtTiVersion = JVMTI_VERSION_1_2 | 0x40000000;
         int version = CORRECT_SDK_INT <= 27 ? JVMTI_VERSION : kArtTiVersion;
-        long JVM = getJavaVMPtr().nativeAddress();
+        long JVM = getJavaVMPtr();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment ptr = arena.allocate(ADDRESS);
             int status = Init.INSTANCE.GetEnv(JVM, ptr.nativeAddress(), version);
@@ -571,9 +571,7 @@ public final class JVMTI {
             static {
                 final String name = "function";
                 MemorySegment getter = generateFunctionCodeSegment((context, module, builder) -> {
-                    LLVMTypeRef[] arg_types = {intptr_t(context), ptr_t(int128_t(context))};
-                    LLVMTypeRef ret_type = int32_t(context);
-                    LLVMTypeRef f_type = LLVMFunctionType(ret_type, arg_types, false);
+                    LLVMTypeRef f_type = function_t(int32_t(context), intptr_t(context), ptr_t(int128_t(context)));
                     LLVMValueRef function = LLVMAddFunction(module, name, f_type);
                     LLVMValueRef[] args = LLVMGetParams(function);
 

@@ -4,7 +4,6 @@ import static com.v7878.llvm.Core.LLVMAddFunction;
 import static com.v7878.llvm.Core.LLVMAppendBasicBlock;
 import static com.v7878.llvm.Core.LLVMBuildICmp;
 import static com.v7878.llvm.Core.LLVMBuildRet;
-import static com.v7878.llvm.Core.LLVMFunctionType;
 import static com.v7878.llvm.Core.LLVMGetParams;
 import static com.v7878.llvm.Core.LLVMIntPredicate.LLVMIntEQ;
 import static com.v7878.llvm.Core.LLVMPositionBuilderAtEnd;
@@ -19,9 +18,10 @@ import static com.v7878.unsafe.InstructionSet.CURRENT_INSTRUCTION_SET;
 import static com.v7878.unsafe.Reflection.getArtMethod;
 import static com.v7878.unsafe.Utils.shouldNotHappen;
 import static com.v7878.unsafe.foreign.LibArt.ART;
-import static com.v7878.unsafe.llvm.LLVMGlobals.int1_t;
-import static com.v7878.unsafe.llvm.LLVMGlobals.intptr_t;
-import static com.v7878.unsafe.llvm.LLVMUtils.const_intptr;
+import static com.v7878.unsafe.llvm.LLVMBuilder.const_intptr;
+import static com.v7878.unsafe.llvm.LLVMTypes.function_t;
+import static com.v7878.unsafe.llvm.LLVMTypes.int1_t;
+import static com.v7878.unsafe.llvm.LLVMTypes.intptr_t;
 import static com.v7878.unsafe.llvm.LLVMUtils.generateFunctionCodeArray;
 
 import android.system.ErrnoException;
@@ -66,9 +66,7 @@ public class Hooks {
             }
             final String name = "function";
             byte[] checker = generateFunctionCodeArray((context, module, builder) -> {
-                LLVMTypeRef[] arg_types = {intptr_t(context), intptr_t(context)};
-                LLVMTypeRef ret_type = int1_t(context);
-                LLVMTypeRef f_type = LLVMFunctionType(ret_type, arg_types, false);
+                LLVMTypeRef f_type = function_t(int1_t(context), intptr_t(context), intptr_t(context));
                 LLVMValueRef function = LLVMAddFunction(module, name, f_type);
                 LLVMValueRef[] args = LLVMGetParams(function);
 

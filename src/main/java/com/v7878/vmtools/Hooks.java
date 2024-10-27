@@ -10,6 +10,7 @@ import static com.v7878.llvm.Core.LLVMPositionBuilderAtEnd;
 import static com.v7878.llvm.Types.LLVMTypeRef;
 import static com.v7878.llvm.Types.LLVMValueRef;
 import static com.v7878.misc.Version.CORRECT_SDK_INT;
+import static com.v7878.unsafe.AndroidUnsafe.ARRAY_BYTE_BASE_OFFSET;
 import static com.v7878.unsafe.AndroidUnsafe.PAGE_SIZE;
 import static com.v7878.unsafe.ArtModifiers.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtModifiers.kAccFastInterpreterToInterpreterInvoke;
@@ -33,6 +34,7 @@ import com.v7878.foreign.MemorySegment;
 import com.v7878.misc.Math;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
+import com.v7878.unsafe.ExtraMemoryAccess;
 import com.v7878.unsafe.NativeCodeBlob;
 import com.v7878.unsafe.Utils;
 import com.v7878.unsafe.io.IOUtils;
@@ -86,8 +88,10 @@ public class Hooks {
 
                 LLVMBuildRet(builder, test_code_null);
             }, name);
+
             mprotect(art_checker.nativeAddress(), checker.length, PROT_RWX);
-            art_checker.reinterpret(checker.length).copyFrom(MemorySegment.ofArray(checker));
+            //Copy at once, without exiting to java code
+            ExtraMemoryAccess.copyMemory(checker, ARRAY_BYTE_BASE_OFFSET, null, art_checker.nativeAddress(), checker.length);
             mprotect(art_checker.nativeAddress(), checker.length, PROT_RX);
         }
     }

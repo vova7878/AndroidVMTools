@@ -5,10 +5,12 @@ import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 
 import com.v7878.r8.annotations.DoNotObfuscate;
 import com.v7878.r8.annotations.DoNotShrink;
+import com.v7878.r8.annotations.DoNotShrinkType;
 import com.v7878.r8.annotations.KeepCodeAttribute;
 
 public class EntryPoints {
     @SuppressWarnings("unused")
+    @DoNotShrinkType
     private static abstract class Test {
         @DoNotShrink
         @DoNotObfuscate

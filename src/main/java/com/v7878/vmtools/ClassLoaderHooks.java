@@ -14,7 +14,7 @@ import static com.v7878.unsafe.DexFileUtils.openDexFile;
 import static com.v7878.unsafe.DexFileUtils.setTrusted;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getMethods;
-import static com.v7878.unsafe.Utils.assert_;
+import static com.v7878.unsafe.Utils.check;
 import static com.v7878.unsafe.Utils.nothrows_run;
 import static com.v7878.unsafe.Utils.searchMethod;
 import static com.v7878.unsafe.VM.objectSizeField;
@@ -146,7 +146,7 @@ public class ClassLoaderHooks {
             Field impl_f = getDeclaredField(hook, "impl");
             nothrows_run(() -> impl_f.set(null, new FindClassCallback(impl, backup_instance)));
 
-            assert_(objectSizeField(lc) == objectSizeField(hook), AssertionError::new);
+            check(objectSizeField(lc) == objectSizeField(hook), AssertionError::new);
 
             setObjectClass(loader, hook);
         }

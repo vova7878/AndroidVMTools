@@ -1,7 +1,7 @@
 [versions]
-agp = "8.6.1"
+agp = "8.7.1"
 androidmisc = "v0.0.4"
-panamaport = "13e7a2cf82"
+panamaport = "d0c1beed47"
 
 [libraries]
 androidmisc = { module = "com.github.vova7878:AndroidMisc", version.ref = "androidmisc" }

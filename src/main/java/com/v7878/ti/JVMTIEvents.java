@@ -14,7 +14,7 @@ import com.v7878.foreign.Linker;
 import com.v7878.foreign.MemorySegment;
 import com.v7878.unsafe.JNIUtils;
 import com.v7878.unsafe.invoke.EmulatedStackFrame;
-import com.v7878.unsafe.invoke.EmulatedStackFrame.StackFrameAccessor;
+import com.v7878.unsafe.invoke.EmulatedStackFrame.RelativeStackFrameAccessor;
 import com.v7878.unsafe.invoke.Transformers;
 import com.v7878.unsafe.invoke.Transformers.AbstractTransformer;
 
@@ -242,7 +242,7 @@ public class JVMTIEvents {
 
     private static final Class<?> jword = IS64BIT ? long.class : int.class;
 
-    private static long nextWord(StackFrameAccessor accessor) {
+    private static long nextWord(RelativeStackFrameAccessor accessor) {
         return IS64BIT ? accessor.nextLong() : accessor.nextInt() & 0xffffffffL;
     }
 
@@ -265,7 +265,7 @@ public class JVMTIEvents {
                             if (tmp_callback == null) {
                                 return;
                             }
-                            var accessor = stack.createAccessor();
+                            var accessor = stack.relativeAccessor();
                             nextWord(accessor); // jvmti_env
                             nextWord(accessor); // jni_env
                             var thread = (Thread) JNIUtils.refToObject(nextWord(accessor));

@@ -1,14 +1,15 @@
 [versions]
-agp = "8.7.1"
+agp = "8.7.2"
 androidmisc = "v0.0.4"
-panamaport = "d0c1beed47"
+r8_annotations = "v0.0.1"
+panamaport = "67d05648d8"
 
 [libraries]
 androidmisc = { module = "com.github.vova7878:AndroidMisc", version.ref = "androidmisc" }
 androidpanama = { module = "com.github.vova7878.PanamaPort:AndroidPanama", version.ref = "panamaport" }
 androidunsafe = { module = "com.github.vova7878.PanamaPort:AndroidUnsafe", version.ref = "panamaport" }
-r8-annotations = { module = "com.github.vova7878.PanamaPort:R8Annotations", version.ref = "panamaport" }
 llvm = { module = "com.github.vova7878.PanamaPort:LLVM", version.ref = "panamaport" }
+r8-annotations = { module = "com.github.vova7878:R8Annotations", version.ref = "r8_annotations" }
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "agp" }

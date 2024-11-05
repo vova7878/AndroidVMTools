@@ -2,11 +2,11 @@ package com.v7878.vmtools;
 
 import static com.v7878.foreign.MemoryLayout.PathElement.groupElement;
 import static com.v7878.foreign.ValueLayout.JAVA_BYTE;
-import static com.v7878.misc.Version.CORRECT_SDK_INT;
 import static com.v7878.unsafe.AndroidUnsafe.getBooleanN;
 import static com.v7878.unsafe.AndroidUnsafe.getIntN;
 import static com.v7878.unsafe.AndroidUnsafe.getWordN;
 import static com.v7878.unsafe.AndroidUnsafe.putIntN;
+import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
 import static com.v7878.unsafe.DexFileUtils.DEXFILE_LAYOUT;
 
 import com.v7878.dex.DexConstants;
@@ -69,7 +69,7 @@ public final class DexFileDump {
      * Compact: shared data which is located after all non-shared data.
      */
     public static MemorySegment getDexFileData(long dexfile_struct) {
-        if (CORRECT_SDK_INT < 28) {
+        if (ART_SDK_INT < 28) {
             return getDexFile(dexfile_struct);
         }
         class Holder {
@@ -77,7 +77,7 @@ public final class DexFileDump {
             static final long data_size_offset;
 
             static {
-                if (CORRECT_SDK_INT >= 34) {
+                if (ART_SDK_INT >= 34) {
                     data_begin_offset = DEXFILE_LAYOUT.byteOffset(
                             groupElement("data_"), groupElement("array_"));
                     data_size_offset = DEXFILE_LAYOUT.byteOffset(
@@ -94,7 +94,7 @@ public final class DexFileDump {
     }
 
     public static boolean isCompactDex(long dexfile_struct) {
-        if (CORRECT_SDK_INT < 28) {
+        if (ART_SDK_INT < 28) {
             return false;
         } else {
             class Holder {

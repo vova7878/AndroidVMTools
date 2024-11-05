@@ -9,12 +9,12 @@ import static com.v7878.llvm.Core.LLVMIntPredicate.LLVMIntEQ;
 import static com.v7878.llvm.Core.LLVMPositionBuilderAtEnd;
 import static com.v7878.llvm.Types.LLVMTypeRef;
 import static com.v7878.llvm.Types.LLVMValueRef;
-import static com.v7878.misc.Version.CORRECT_SDK_INT;
 import static com.v7878.unsafe.AndroidUnsafe.ARRAY_BYTE_BASE_OFFSET;
 import static com.v7878.unsafe.AndroidUnsafe.PAGE_SIZE;
 import static com.v7878.unsafe.ArtModifiers.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtModifiers.kAccFastInterpreterToInterpreterInvoke;
 import static com.v7878.unsafe.ArtModifiers.kAccPreCompiled;
+import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
 import static com.v7878.unsafe.InstructionSet.CURRENT_INSTRUCTION_SET;
 import static com.v7878.unsafe.Reflection.getArtMethod;
 import static com.v7878.unsafe.Utils.shouldNotHappen;
@@ -59,7 +59,7 @@ public class Hooks {
     }
 
     static {
-        if (CORRECT_SDK_INT < 33) linker_hook:{
+        if (ART_SDK_INT < 33) linker_hook:{
             MemorySegment art_checker = ART.find("_ZN3art11ClassLinker30ShouldUseInterpreterEntrypointEPNS_9ArtMethodEPKv").orElse(null);
             if (art_checker == null) {
                 //TODO

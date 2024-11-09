@@ -73,6 +73,7 @@ public class ClassLoaderHooks {
         }
     }
 
+    @SuppressWarnings("unchecked")
     public static void hookFindClass(ClassLoader loader, FindClassI impl) {
         Objects.requireNonNull(loader);
         Objects.requireNonNull(impl);
@@ -140,7 +141,6 @@ public class ClassLoaderHooks {
             Class<?> hook = loadClass(dex, hook_name, lc.getClassLoader());
             Class<?> backup = loadClass(dex, backup_name, lc.getClassLoader());
 
-            //noinspection unchecked
             var backup_instance = (BiFunction<ClassLoader, String, Class<?>>)
                     AndroidUnsafe.allocateInstance(backup);
             Field impl_f = getDeclaredField(hook, "impl");

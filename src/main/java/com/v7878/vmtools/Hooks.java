@@ -1,5 +1,8 @@
 package com.v7878.vmtools;
 
+import static com.v7878.dex.DexConstants.ACC_PUBLIC;
+import static com.v7878.dex.DexConstants.ACC_STATIC;
+import static com.v7878.dex.bytecode.CodeBuilder.Op.GET_OBJECT;
 import static com.v7878.llvm.Core.LLVMAddFunction;
 import static com.v7878.llvm.Core.LLVMAppendBasicBlock;
 import static com.v7878.llvm.Core.LLVMBuildICmp;
@@ -16,8 +19,13 @@ import static com.v7878.unsafe.ArtModifiers.kAccFastInterpreterToInterpreterInvo
 import static com.v7878.unsafe.ArtModifiers.kAccPreCompiled;
 import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
 import static com.v7878.unsafe.InstructionSet.CURRENT_INSTRUCTION_SET;
+import static com.v7878.unsafe.Reflection.fieldOffset;
 import static com.v7878.unsafe.Reflection.getArtMethod;
+import static com.v7878.unsafe.Reflection.getDeclaredField;
+import static com.v7878.unsafe.Reflection.getDeclaredMethod;
+import static com.v7878.unsafe.Reflection.unreflect;
 import static com.v7878.unsafe.Utils.shouldNotHappen;
+import static com.v7878.unsafe.Utils.shouldNotReachHere;
 import static com.v7878.unsafe.foreign.LibArt.ART;
 import static com.v7878.unsafe.llvm.LLVMBuilder.const_intptr;
 import static com.v7878.unsafe.llvm.LLVMTypes.function_t;
@@ -29,18 +37,40 @@ import android.system.ErrnoException;
 import android.system.OsConstants;
 import android.util.Log;
 
+import com.v7878.dex.ClassDef;
+import com.v7878.dex.Dex;
+import com.v7878.dex.EncodedField;
+import com.v7878.dex.EncodedMethod;
+import com.v7878.dex.FieldId;
+import com.v7878.dex.MethodId;
+import com.v7878.dex.ProtoId;
+import com.v7878.dex.TypeId;
 import com.v7878.foreign.Arena;
 import com.v7878.foreign.MemorySegment;
 import com.v7878.misc.Math;
+import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
+import com.v7878.unsafe.DexFileUtils;
 import com.v7878.unsafe.ExtraMemoryAccess;
 import com.v7878.unsafe.NativeCodeBlob;
 import com.v7878.unsafe.Utils;
+import com.v7878.unsafe.Utils.WeakReferenceCache;
+import com.v7878.unsafe.access.InvokeAccess;
+import com.v7878.unsafe.invoke.EmulatedStackFrame;
+import com.v7878.unsafe.invoke.MethodHandlesFixes;
+import com.v7878.unsafe.invoke.Transformers;
+import com.v7878.unsafe.invoke.Transformers.AbstractTransformer;
 import com.v7878.unsafe.io.IOUtils;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 public class Hooks {
@@ -237,5 +267,128 @@ public class Hooks {
         ClassUtils.ensureClassVisiblyInitialized(backup.getDeclaringClass());
         hook(backup, target, getEntryPoint(target, target_type));
         hook(target, hooker, getEntryPoint(hooker, hooker_type));
+    }
+
+    public interface HookTransformer {
+        void transform(MethodHandle original, EmulatedStackFrame stack) throws Throwable;
+    }
+
+    private static final String INVOKER_NAME = Hooks.class.getName() + "$$$Invoker";
+    private static final String METHOD_NAME = "invoke";
+    private static final String FIELD_NAME = "handle";
+
+    private static byte[] generateInvoker(MethodType type) {
+        TypeId mh_id = TypeId.of(MethodHandle.class);
+        TypeId obj_id = TypeId.OBJECT;
+
+        ProtoId proto = ProtoId.of(type);
+
+        TypeId invoker_id = TypeId.of(INVOKER_NAME);
+        ClassDef invoker_def = new ClassDef(invoker_id);
+        invoker_def.setSuperClass(obj_id);
+
+        FieldId field_id = new FieldId(invoker_id, mh_id, FIELD_NAME);
+        invoker_def.getClassData().getStaticFields().add(new EncodedField(
+                field_id, ACC_PUBLIC | ACC_STATIC));
+
+        ProtoId mh_proto = new ProtoId(obj_id, obj_id.array());
+        MethodId mh_method = new MethodId(mh_id, mh_proto, "invokeExact");
+
+        int params = proto.getInputRegistersCount() + /* handle */ 1;
+
+        MethodId method_id = new MethodId(invoker_id, proto, METHOD_NAME);
+        invoker_def.getClassData().getDirectMethods().add(new EncodedMethod(
+                method_id, ACC_PUBLIC | ACC_STATIC).withCode(1, b -> {
+                    b.sop(GET_OBJECT, b.v(0), field_id);
+                    b.invoke_polymorphic_range(mh_method, proto, params, b.v(0));
+                    switch (proto.getReturnType().getShorty()) {
+                        case 'V' -> b.return_void();
+                        case 'Z', 'B', 'C', 'S', 'I', 'F' -> {
+                            b.move_result(b.l(0));
+                            b.return_(b.l(0));
+                        }
+                        case 'J', 'D' -> {
+                            b.move_result_wide(b.l(0));
+                            b.return_wide(b.l(0));
+                        }
+                        case 'L' -> {
+                            b.move_result_object(b.l(0));
+                            b.return_object(b.l(0));
+                        }
+                        default -> throw shouldNotReachHere();
+                    }
+                }
+        ));
+
+        return new Dex(invoker_def).compile();
+    }
+
+    private static final WeakReferenceCache<MethodType, byte[]>
+            invokers_cache = new WeakReferenceCache<>();
+
+    private static Class<?> loadInvoker(MethodType type) {
+        ClassLoader loader = Utils.newEmptyClassLoader(Object.class.getClassLoader());
+        var dexfile = DexFileUtils.openDexFile(invokers_cache.get(type, Hooks::generateInvoker));
+        return DexFileUtils.loadClass(dexfile, INVOKER_NAME, loader);
+    }
+
+    private static final class HookTransformerImpl extends AbstractTransformer {
+        private final MethodHandle original;
+        private final HookTransformer transformer;
+
+        HookTransformerImpl(MethodHandle original, HookTransformer transformer) {
+            this.original = original;
+            this.transformer = transformer;
+        }
+
+        @Override
+        protected void transform(MethodHandle thiz, EmulatedStackFrame stack) throws Throwable {
+            stack.setType(original.type());
+            transformer.transform(original, stack);
+        }
+    }
+
+    private static Method initInvoker(MethodType type, HookTransformer transformer) {
+        var erased = type.erase(); // TODO: maybe use basic type?
+        var invoker = loadInvoker(erased);
+        var m_hooker = getDeclaredMethod(invoker, METHOD_NAME, InvokeAccess.ptypes(erased));
+        var original = MethodHandlesFixes.reinterptetHandle(unreflect(m_hooker), type);
+        var impl = new HookTransformerImpl(original, transformer);
+        var handle = Transformers.makeTransformer(erased, impl);
+        var f_handle = getDeclaredField(invoker, FIELD_NAME);
+        AndroidUnsafe.putObject(invoker, fieldOffset(f_handle), handle);
+        return m_hooker;
+    }
+
+    private static MethodType methodTypeOf(Executable ex) {
+        Class<?> ret;
+        List<Class<?>> args = new ArrayList<>();
+        if (ex instanceof Method m) {
+            ret = m.getReturnType();
+            if (!Modifier.isStatic(m.getModifiers())) {
+                args.add(m.getDeclaringClass());
+            }
+            args.addAll(List.of(m.getParameterTypes()));
+        } else {
+            assert ex instanceof Constructor<?>;
+            ret = void.class;
+            args.add(ex.getDeclaringClass());
+            args.addAll(List.of(ex.getParameterTypes()));
+        }
+        return MethodType.methodType(ret, args);
+    }
+
+    /**
+     * target -> hooker
+     * original (parameter of transformer) -> target
+     */
+    public static void hook(Executable target, EntryPointType target_type,
+                            HookTransformer hooker, EntryPointType hooker_type) {
+        Objects.requireNonNull(target);
+        Objects.requireNonNull(hooker);
+
+        var type = methodTypeOf(target);
+        var invoker = initInvoker(type, hooker);
+        hookSwap(target, target_type, invoker, hooker_type);
     }
 }

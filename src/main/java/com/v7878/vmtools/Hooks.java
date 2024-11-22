@@ -26,6 +26,13 @@ import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 import static com.v7878.unsafe.Reflection.unreflect;
 import static com.v7878.unsafe.Utils.shouldNotHappen;
 import static com.v7878.unsafe.Utils.shouldNotReachHere;
+import static com.v7878.unsafe.foreign.BulkLinker.CallSignature;
+import static com.v7878.unsafe.foreign.BulkLinker.CallType.CRITICAL;
+import static com.v7878.unsafe.foreign.BulkLinker.LibrarySymbol;
+import static com.v7878.unsafe.foreign.BulkLinker.MapType.BOOL;
+import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
+import static com.v7878.unsafe.foreign.BulkLinker.MapType.VOID;
+import static com.v7878.unsafe.foreign.BulkLinker.processSymbols;
 import static com.v7878.unsafe.foreign.LibArt.ART;
 import static com.v7878.unsafe.llvm.LLVMBuilder.const_intptr;
 import static com.v7878.unsafe.llvm.LLVMTypes.function_t;
@@ -48,6 +55,9 @@ import com.v7878.dex.TypeId;
 import com.v7878.foreign.Arena;
 import com.v7878.foreign.MemorySegment;
 import com.v7878.misc.Math;
+import com.v7878.r8.annotations.DoNotOptimize;
+import com.v7878.r8.annotations.DoNotShrink;
+import com.v7878.r8.annotations.DoNotShrinkType;
 import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
@@ -88,6 +98,27 @@ public class Hooks {
         }
     }
 
+    @DoNotShrinkType
+    @DoNotOptimize
+    @SuppressWarnings("SameParameterValue")
+    private abstract static class Native {
+        @DoNotShrink
+        private static final Arena SCOPE = Arena.ofAuto();
+
+        static final MemorySegment CAUSE = SCOPE.allocateFrom("Hook");
+
+        @LibrarySymbol(name = "_ZN3art16ScopedSuspendAllC2EPKcb")
+        @CallSignature(type = CRITICAL, ret = VOID, args = {LONG_AS_WORD, LONG_AS_WORD, BOOL})
+        abstract void SuspendAll(long thiz, long cause, boolean long_suspend);
+
+        @LibrarySymbol(name = "_ZN3art16ScopedSuspendAllD2Ev")
+        @CallSignature(type = CRITICAL, ret = VOID, args = {LONG_AS_WORD})
+        abstract void ResumeAll(long thiz);
+
+        static final Native INSTANCE = AndroidUnsafe.allocateInstance(
+                processSymbols(SCOPE, Native.class, ART));
+    }
+
     static {
         if (ART_SDK_INT < 33) linker_hook:{
             MemorySegment art_checker = ART.find("_ZN3art11ClassLinker30ShouldUseInterpreterEntrypointEPNS_9ArtMethodEPKv").orElse(null);
@@ -119,10 +150,15 @@ public class Hooks {
                 LLVMBuildRet(builder, test_code_null);
             }, name);
 
-            mprotect(art_checker.nativeAddress(), checker.length, PROT_RWX);
-            //Copy at once, without exiting to java code
-            ExtraMemoryAccess.copyMemory(checker, ARRAY_BYTE_BASE_OFFSET, null, art_checker.nativeAddress(), checker.length);
-            mprotect(art_checker.nativeAddress(), checker.length, PROT_RX);
+            Native.INSTANCE.SuspendAll(0, Native.CAUSE.nativeAddress(), false);
+            try {
+                mprotect(art_checker.nativeAddress(), checker.length, PROT_RWX);
+                //Copy at once, without exiting to java code
+                ExtraMemoryAccess.copyMemory(checker, ARRAY_BYTE_BASE_OFFSET, null, art_checker.nativeAddress(), checker.length);
+                mprotect(art_checker.nativeAddress(), checker.length, PROT_RX);
+            } finally {
+                Native.INSTANCE.ResumeAll(0);
+            }
         }
     }
 

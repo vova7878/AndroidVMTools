@@ -150,15 +150,15 @@ public class Hooks {
                 LLVMBuildRet(builder, test_code_null);
             }, name);
 
+            mprotect(art_checker.nativeAddress(), checker.length, PROT_RWX);
             Native.INSTANCE.SuspendAll(0, Native.CAUSE.nativeAddress(), false);
             try {
-                mprotect(art_checker.nativeAddress(), checker.length, PROT_RWX);
                 //Copy at once, without exiting to java code
                 ExtraMemoryAccess.copyMemory(checker, ARRAY_BYTE_BASE_OFFSET, null, art_checker.nativeAddress(), checker.length);
-                mprotect(art_checker.nativeAddress(), checker.length, PROT_RX);
             } finally {
                 Native.INSTANCE.ResumeAll(0);
             }
+            mprotect(art_checker.nativeAddress(), checker.length, PROT_RX);
         }
     }
 

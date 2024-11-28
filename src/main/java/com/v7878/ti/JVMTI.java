@@ -104,6 +104,7 @@ import com.v7878.foreign.MemorySegment;
 import com.v7878.foreign.SymbolLookup;
 import com.v7878.llvm.Types.LLVMTypeRef;
 import com.v7878.llvm.Types.LLVMValueRef;
+import com.v7878.r8.annotations.AlwaysInline;
 import com.v7878.r8.annotations.DoNotOptimize;
 import com.v7878.r8.annotations.DoNotShrink;
 import com.v7878.r8.annotations.DoNotShrinkType;
@@ -797,7 +798,7 @@ public final class JVMTI {
     }
 
     @SafeVarargs
-    public static void RedefineClasses(Pair<Class<?>, byte[]>... class_definitions) {
+    public static void RedefineClasses(Pair<Class<?>, byte[]>... class_definitions) throws JVMTIException {
         Objects.requireNonNull(class_definitions);
         int entries = class_definitions.length;
         if (entries == 0) {
@@ -845,7 +846,7 @@ public final class JVMTI {
         }
     }
 
-    public static void RedefineClass(Class<?> klass, byte[] data) {
+    public static void RedefineClass(Class<?> klass, byte[] data) throws JVMTIException {
         RedefineClasses(new Pair<>(klass, data));
     }
 
@@ -916,38 +917,49 @@ public final class JVMTI {
         checkError(Native.INSTANCE.InterruptThread(JVMTI_ENV, thread));
     }
 
-    // TODO: what if we need to force return or pop frame for current thread?
+    @AlwaysInline
+    private static boolean isCurrent(Thread thread) {
+        return thread == Thread.currentThread();
+    }
+
+    private static RuntimeException UCT(String op_name) {
+        // TODO: what if we need to force return or pop frame for current thread?
+        throw new UnsupportedOperationException(op_name + " is unsupported for current thread");
+    }
 
     public static void ForceEarlyReturnObject(Thread thread, Object value) {
+        if (isCurrent(thread)) throw UCT("ForceEarlyReturnObject");
         checkError(Native.INSTANCE.ForceEarlyReturnObject(JVMTI_ENV, thread, value));
     }
 
     public static void ForceEarlyReturnInt(Thread thread, int value) {
+        if (isCurrent(thread)) throw UCT("ForceEarlyReturnInt");
         checkError(Native.INSTANCE.ForceEarlyReturnInt(JVMTI_ENV, thread, value));
     }
 
     public static void ForceEarlyReturnLong(Thread thread, long value) {
+        if (isCurrent(thread)) throw UCT("ForceEarlyReturnLong");
         checkError(Native.INSTANCE.ForceEarlyReturnLong(JVMTI_ENV, thread, value));
     }
 
     public static void ForceEarlyReturnFloat(Thread thread, float value) {
+        if (isCurrent(thread)) throw UCT("ForceEarlyReturnFloat");
         checkError(Native.INSTANCE.ForceEarlyReturnFloat(JVMTI_ENV, thread, value));
     }
 
     public static void ForceEarlyReturnDouble(Thread thread, double value) {
+        if (isCurrent(thread)) throw UCT("ForceEarlyReturnDouble");
         checkError(Native.INSTANCE.ForceEarlyReturnDouble(JVMTI_ENV, thread, value));
     }
 
     public static void ForceEarlyReturnVoid(Thread thread) {
+        if (isCurrent(thread)) throw UCT("ForceEarlyReturnVoid");
         checkError(Native.INSTANCE.ForceEarlyReturnVoid(JVMTI_ENV, thread));
     }
 
     public static void PopFrame(Thread thread) {
+        if (isCurrent(thread)) throw UCT("PopFrame");
         checkError(Native.INSTANCE.PopFrame(JVMTI_ENV, thread));
-    }
-
-    private static boolean isCurrent(Thread thread) {
-        return thread == Thread.currentThread();
     }
 
     private static final int STUB_DEPTH = 3;

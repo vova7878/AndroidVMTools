@@ -1,5 +1,7 @@
 package com.v7878.ti;
 
+import static com.v7878.foreign.Linker.Option.JNIEnvArg;
+import static com.v7878.foreign.Linker.Option.allowExceptions;
 import static com.v7878.foreign.MemoryLayout.PathElement.groupElement;
 import static com.v7878.foreign.MemoryLayout.structLayout;
 import static com.v7878.foreign.ValueLayout.ADDRESS;
@@ -14,12 +16,11 @@ import com.v7878.foreign.Linker;
 import com.v7878.foreign.MemorySegment;
 import com.v7878.unsafe.JNIUtils;
 import com.v7878.unsafe.invoke.EmulatedStackFrame;
-import com.v7878.unsafe.invoke.EmulatedStackFrame.RelativeStackFrameAccessor;
+import com.v7878.unsafe.invoke.EmulatedStackFrame.StackFrameAccessor;
 import com.v7878.unsafe.invoke.Transformers;
 import com.v7878.unsafe.invoke.Transformers.AbstractTransformer;
 
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 
 public class JVMTIEvents {
@@ -240,42 +241,38 @@ public class JVMTIEvents {
     private static final long CALLBACKS_ADDRESS = CALLBACKS.nativeAddress();
     private static final int CALLBACKS_SIZE = Math.toIntExact(CALLBACKS.byteSize());
 
-    private static final Class<?> jword = IS64BIT ? long.class : int.class;
-
-    private static long nextWord(RelativeStackFrameAccessor accessor) {
-        return IS64BIT ? accessor.nextLong() : accessor.nextInt() & 0xffffffffL;
+    private static long callbackOffset(String name) {
+        return JVMTI_EVENT_CALLBACKS_LAYOUT.byteOffset(groupElement(name));
     }
 
+    private static long getWord(StackFrameAccessor accessor, int index) {
+        return IS64BIT ? accessor.getLong(index) : accessor.getInt(index) & 0xffffffffL;
+    }
+
+    // (jvmtiEnv*, JNIEnv*, jthread, jmethodID, jlocation) -> void
     public static void setBreakpointCallback(BreakpointCallback callback) {
-        //TODO: change upcall to hand-written stub (because callback has jni env already)
         class Holder {
-            static BreakpointCallback java_callback;
-            static final long OFFSET = JVMTI_EVENT_CALLBACKS_LAYOUT
-                    .byteOffset(groupElement("Breakpoint"));
-            // (jvmtiEnv*, JNIEnv*, jthread, jmethodID, jlocation) -> void
-            static final MethodType TYPE = MethodType.methodType(
-                    void.class, jword, jword, jword, jword, long.class);
-            static final FunctionDescriptor DESCRIPTOR = FunctionDescriptor.ofVoid(
-                    WORD, WORD, WORD, WORD, JAVA_LONG);
-            static final MethodHandle invoker = Transformers.makeTransformer(
-                    TYPE, new AbstractTransformer() {
+            static volatile BreakpointCallback java_callback;
+            static final long OFFSET = callbackOffset("Breakpoint");
+            static final FunctionDescriptor DESCRIPTOR =
+                    FunctionDescriptor.ofVoid(WORD, WORD, WORD, JAVA_LONG);
+            static final MethodHandle HANDLE = Transformers.makeTransformer(
+                    DESCRIPTOR.toMethodType(), new AbstractTransformer() {
                         @Override
                         protected void transform(MethodHandle thiz, EmulatedStackFrame stack) {
                             var tmp_callback = java_callback;
                             if (tmp_callback == null) {
                                 return;
                             }
-                            var accessor = stack.relativeAccessor();
-                            nextWord(accessor); // jvmti_env
-                            nextWord(accessor); // jni_env
-                            var thread = (Thread) JNIUtils.refToObject(nextWord(accessor));
-                            var method = JNIUtils.ToReflectedMethod(nextWord(accessor));
-                            var location = accessor.nextLong();
+                            var accessor = stack.accessor();
+                            var thread = (Thread) JNIUtils.refToObject(getWord(accessor, 1));
+                            var method = JNIUtils.ToReflectedMethod(getWord(accessor, 2));
+                            var location = accessor.getLong(3);
                             tmp_callback.invoke(thread, method, location);
                         }
                     });
             static final MemorySegment native_callback = LINKER.upcallStub(
-                    invoker, DESCRIPTOR, JVMTI_SCOPE);
+                    HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
         Holder.java_callback = callback;
         CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?

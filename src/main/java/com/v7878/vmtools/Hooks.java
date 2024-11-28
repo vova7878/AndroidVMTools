@@ -83,6 +83,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import sun.misc.Cleaner;
+
 public class Hooks {
 
     private static final int PROT_RX = OsConstants.PROT_READ | OsConstants.PROT_EXEC;
@@ -245,9 +247,8 @@ public class Hooks {
         //TODO: check signatures
         Objects.requireNonNull(target);
         Objects.requireNonNull(hooker);
-        //TODO: find a way to ensure that trampoline has
-        // same lifetime as declaring class of target executable
-        Arena scope = Arena.global();
+        Arena scope = Arena.ofShared();
+        Cleaner.create(target.getDeclaringClass(), scope::close);
         MemorySegment new_entry_point = NativeCodeBlob.makeCodeBlob(scope,
                 getTrampolineArray(getArtMethod(hooker), hooker_entry_point))[0];
         ArtMethodUtils.makeExecutableNonCompilable(target);

@@ -29,6 +29,11 @@ public class JVMTIEvents {
         void invoke(Thread thread, Method method, long location);
     }
 
+    @FunctionalInterface
+    public interface GarbageCollectionCallback {
+        void invoke(boolean start_or_finish);
+    }
+
     //typedef void (JNICALL *jvmtiEventClassFileLoadHook)
     //    (jvmtiEnv *jvmti_env,
     //     JNIEnv* jni_env,
@@ -50,25 +55,8 @@ public class JVMTIEvents {
     //     JNIEnv* jni_env,
     //     jthread thread,
     //     jclass klass);
-    //typedef void (JNICALL *jvmtiEventCompiledMethodLoad)
-    //    (jvmtiEnv *jvmti_env,
-    //     jmethodID method,
-    //     jint code_size,
-    //     const void* code_addr,
-    //     jint map_length,
-    //     const jvmtiAddrLocationMap* map,
-    //     const void* compile_info);
-    //typedef void (JNICALL *jvmtiEventCompiledMethodUnload)
-    //    (jvmtiEnv *jvmti_env,
-    //     jmethodID method,
-    //     const void* code_addr);
     //typedef void (JNICALL *jvmtiEventDataDumpRequest)
     //    (jvmtiEnv *jvmti_env);
-    //typedef void (JNICALL *jvmtiEventDynamicCodeGenerated)
-    //    (jvmtiEnv *jvmti_env,
-    //     const char* name,
-    //     const void* address,
-    //     jint length);
     //typedef void (JNICALL *jvmtiEventException)
     //    (jvmtiEnv *jvmti_env,
     //     JNIEnv* jni_env,
@@ -111,10 +99,6 @@ public class JVMTIEvents {
     //     jthread thread,
     //     jmethodID method,
     //     jboolean was_popped_by_exception);
-    //typedef void (JNICALL *jvmtiEventGarbageCollectionFinish)
-    //    (jvmtiEnv *jvmti_env);
-    //typedef void (JNICALL *jvmtiEventGarbageCollectionStart)
-    //    (jvmtiEnv *jvmti_env);
     //typedef void (JNICALL *jvmtiEventMethodEntry)
     //    (jvmtiEnv *jvmti_env,
     //     JNIEnv* jni_env,
@@ -261,9 +245,7 @@ public class JVMTIEvents {
                         @Override
                         protected void transform(MethodHandle thiz, EmulatedStackFrame stack) {
                             var tmp_callback = java_callback;
-                            if (tmp_callback == null) {
-                                return;
-                            }
+                            if (tmp_callback == null) return;
                             var accessor = stack.accessor();
                             var thread = (Thread) JNIUtils.refToObject(getWord(accessor, 1));
                             var method = JNIUtils.ToReflectedMethod(getWord(accessor, 2));
@@ -277,6 +259,46 @@ public class JVMTIEvents {
         Holder.java_callback = callback;
         CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
                 MemorySegment.NULL : Holder.native_callback);
+        JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
+    }
+
+    // (jvmtiEnv *jvmti_env) -> void
+    public static void setGarbageCollectionCallback(GarbageCollectionCallback callback) {
+        class Holder {
+            static volatile GarbageCollectionCallback java_callback;
+            static final long START_OFFSET = callbackOffset("GarbageCollectionStart");
+            static final long FINISH_OFFSET = callbackOffset("GarbageCollectionFinish");
+            static final FunctionDescriptor DESCRIPTOR = FunctionDescriptor.ofVoid(WORD);
+
+            static class Handle extends AbstractTransformer {
+                private final boolean start_or_finish;
+
+                Handle(boolean start_or_finish) {
+                    this.start_or_finish = start_or_finish;
+                }
+
+                @Override
+                protected void transform(MethodHandle thiz, EmulatedStackFrame stack) {
+                    var tmp_callback = java_callback;
+                    if (tmp_callback == null) return;
+                    tmp_callback.invoke(start_or_finish);
+                }
+            }
+
+            static final MethodHandle START_HANDLE = Transformers.makeTransformer(
+                    DESCRIPTOR.toMethodType(), new Handle(true));
+            static final MemorySegment start_native_callback = LINKER.upcallStub(
+                    START_HANDLE, DESCRIPTOR, JVMTI_SCOPE, allowExceptions());
+            static final MethodHandle FINISH_HANDLE = Transformers.makeTransformer(
+                    DESCRIPTOR.toMethodType(), new Handle(false));
+            static final MemorySegment finish_native_callback = LINKER.upcallStub(
+                    FINISH_HANDLE, DESCRIPTOR, JVMTI_SCOPE, allowExceptions());
+        }
+        Holder.java_callback = callback;
+        CALLBACKS.set(ADDRESS, Holder.START_OFFSET, callback == null ?
+                MemorySegment.NULL : Holder.start_native_callback);
+        CALLBACKS.set(ADDRESS, Holder.FINISH_OFFSET, callback == null ?
+                MemorySegment.NULL : Holder.finish_native_callback);
         JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
     }
 }

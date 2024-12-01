@@ -426,6 +426,7 @@ public class Hooks {
 
         var type = methodTypeOf(target);
         var invoker = initInvoker(type, hooker);
+        Cleaner.create(target.getDeclaringClass(), () -> Utils.reachabilityFence(invoker));
         hookSwap(target, target_type, invoker, hooker_type);
     }
 }

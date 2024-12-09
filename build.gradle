@@ -26,12 +26,13 @@ android {
 }
 
 dependencies {
+    compileOnly libs.sun.cleanerstub
+
     api libs.androidpanama
     api libs.androidunsafe
     api libs.llvm
 
     implementation libs.androidmisc
-    implementation libs.sun.cleanerstub
     implementation libs.r8.annotations
 }
 

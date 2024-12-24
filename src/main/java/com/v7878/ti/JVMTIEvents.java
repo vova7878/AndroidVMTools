@@ -34,6 +34,7 @@ public class JVMTIEvents {
         void invoke(boolean start_or_finish);
     }
 
+    // TODO
     //typedef void (JNICALL *jvmtiEventClassFileLoadHook)
     //    (jvmtiEnv *jvmti_env,
     //     JNIEnv* jni_env,
@@ -143,12 +144,6 @@ public class JVMTIEvents {
     //typedef void (JNICALL *jvmtiEventObjectFree)
     //    (jvmtiEnv *jvmti_env,
     //     jlong tag);
-    //typedef void (JNICALL *jvmtiEventResourceExhausted)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env,
-    //     jint flags,
-    //     const void* reserved,
-    //     const char* description);
     //typedef void (JNICALL *jvmtiEventSingleStep)
     //    (jvmtiEnv *jvmti_env,
     //     JNIEnv* jni_env,
@@ -163,13 +158,6 @@ public class JVMTIEvents {
     //    (jvmtiEnv *jvmti_env,
     //     JNIEnv* jni_env,
     //     jthread thread);
-    //typedef void (JNICALL *jvmtiEventVMDeath)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env);
-    //typedef void (JNICALL *jvmtiEventVMInit)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env,
-    //     jthread thread);
     //typedef void (JNICALL *jvmtiEventVMObjectAlloc)
     //    (jvmtiEnv *jvmti_env,
     //     JNIEnv* jni_env,
@@ -177,9 +165,6 @@ public class JVMTIEvents {
     //     jobject object,
     //     jclass object_klass,
     //     jlong size);
-    //typedef void (JNICALL *jvmtiEventVMStart)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env);
 
     public static final GroupLayout JVMTI_EVENT_CALLBACKS_LAYOUT = structLayout(
             ADDRESS.withName("VMInit"),

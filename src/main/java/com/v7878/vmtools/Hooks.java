@@ -18,6 +18,7 @@ import static com.v7878.unsafe.ArtModifiers.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtModifiers.kAccFastInterpreterToInterpreterInvoke;
 import static com.v7878.unsafe.ArtModifiers.kAccPreCompiled;
 import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
+import static com.v7878.unsafe.InstructionSet.ARM;
 import static com.v7878.unsafe.InstructionSet.CURRENT_INSTRUCTION_SET;
 import static com.v7878.unsafe.Reflection.fieldOffset;
 import static com.v7878.unsafe.Reflection.getArtMethod;
@@ -126,7 +127,12 @@ public class Hooks {
             MemorySegment art_checker = ART.find("_ZN3art11ClassLinker30ShouldUseInterpreterEntrypointEPNS_9ArtMethodEPKv").orElse(null);
             if (art_checker == null) {
                 //TODO
-                Log.e(Utils.LOG_TAG, "Can`t find ClassLinker::ShouldUseInterpreterEntrypoint, hooks may not work in debug mode");
+                Log.e(Utils.LOG_TAG, "Can`t find ClassLinker::ShouldUseInterpreterEntrypoint, java hooks may not work in debug mode");
+                break linker_hook;
+            }
+            if (CURRENT_INSTRUCTION_SET == ARM) {
+                //TODO: How to determine what instruction set this function uses? (Full arm or Thumb)
+                Log.e(Utils.LOG_TAG, "ClassLinker::ShouldUseInterpreterEntrypoint hook on arm32 is not supported, java hooks may not work in debug mode");
                 break linker_hook;
             }
             final String name = "function";

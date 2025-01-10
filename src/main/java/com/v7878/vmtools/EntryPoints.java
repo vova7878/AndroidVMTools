@@ -36,6 +36,7 @@ public class EntryPoints {
         String test_name = EntryPoints.class.getName() + "$Test";
         TypeId test_id = TypeId.of(test_name);
         ClassDef test_def = new ClassDef(test_id);
+        test_def.setAccessFlags(ACC_ABSTRACT);
         test_def.setSuperClass(obj_id);
 
         MethodId jni_method_id = new MethodId(test_id, ProtoId.of(JNI_TYPE), "jni");

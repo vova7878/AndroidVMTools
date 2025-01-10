@@ -1,7 +1,7 @@
 package com.v7878.vmtools;
 
-import static com.v7878.dex.DexConstants.ACC_PUBLIC;
 import static com.v7878.dex.DexConstants.ACC_STATIC;
+import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.STATIC;
 import static com.v7878.dex.bytecode.CodeBuilder.Op.GET_OBJECT;
 import static com.v7878.llvm.Core.LLVMAddFunction;
 import static com.v7878.llvm.Core.LLVMAppendBasicBlock;
@@ -14,9 +14,7 @@ import static com.v7878.llvm.Types.LLVMTypeRef;
 import static com.v7878.llvm.Types.LLVMValueRef;
 import static com.v7878.unsafe.AndroidUnsafe.ARRAY_BYTE_BASE_OFFSET;
 import static com.v7878.unsafe.AndroidUnsafe.PAGE_SIZE;
-import static com.v7878.unsafe.ArtModifiers.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtModifiers.kAccFastInterpreterToInterpreterInvoke;
-import static com.v7878.unsafe.ArtModifiers.kAccPreCompiled;
 import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
 import static com.v7878.unsafe.InstructionSet.ARM;
 import static com.v7878.unsafe.InstructionSet.CURRENT_INSTRUCTION_SET;
@@ -53,6 +51,7 @@ import com.v7878.dex.FieldId;
 import com.v7878.dex.MethodId;
 import com.v7878.dex.ProtoId;
 import com.v7878.dex.TypeId;
+import com.v7878.dex.bytecode.CodeBuilder;
 import com.v7878.foreign.Arena;
 import com.v7878.foreign.MemorySegment;
 import com.v7878.misc.Math;
@@ -86,6 +85,7 @@ import java.util.Objects;
 
 import sun.misc.Cleaner;
 
+// TODO: allow to hook static constructors
 public class Hooks {
 
     private static final int PROT_RX = OsConstants.PROT_READ | OsConstants.PROT_EXEC;
@@ -172,7 +172,7 @@ public class Hooks {
 
     public static void deoptimize(Executable ex) {
         ClassUtils.ensureClassVisiblyInitialized(ex.getDeclaringClass());
-        ArtMethodUtils.changeExecutableFlags(ex, kAccPreCompiled, kAccCompileDontBother);
+        ArtMethodUtils.makeExecutableNonCompilable(ex);
         long entry_point = Modifier.isNative(ex.getModifiers()) ?
                 EntryPoints.getGenericJniTrampoline() :
                 EntryPoints.getToInterpreterBridge();
@@ -317,8 +317,29 @@ public class Hooks {
     }
 
     private static final String INVOKER_NAME = Hooks.class.getName() + "$$$Invoker";
+    private static final String RAW_METHOD_NAME = "raw_invoke";
     private static final String METHOD_NAME = "invoke";
     private static final String FIELD_NAME = "handle";
+
+    private static void gen_move_result(CodeBuilder b, char type, int reg) {
+        switch (type) {
+            case 'V' -> { /* nop */ }
+            case 'Z', 'B', 'C', 'S', 'I', 'F' -> b.move_result(reg);
+            case 'J', 'D' -> b.move_result_wide(reg);
+            case 'L' -> b.move_result_object(reg);
+            default -> throw shouldNotReachHere();
+        }
+    }
+
+    private static void gen_return(CodeBuilder b, char type, int reg) {
+        switch (type) {
+            case 'V' -> b.return_void();
+            case 'Z', 'B', 'C', 'S', 'I', 'F' -> b.return_(reg);
+            case 'J', 'D' -> b.return_wide(reg);
+            case 'L' -> b.return_object(reg);
+            default -> throw shouldNotReachHere();
+        }
+    }
 
     private static byte[] generateInvoker(MethodType type) {
         TypeId mh_id = TypeId.of(MethodHandle.class);
@@ -332,34 +353,30 @@ public class Hooks {
 
         FieldId field_id = new FieldId(invoker_id, mh_id, FIELD_NAME);
         invoker_def.getClassData().getStaticFields().add(new EncodedField(
-                field_id, ACC_PUBLIC | ACC_STATIC));
+                field_id, ACC_STATIC));
 
         ProtoId mh_proto = new ProtoId(obj_id, obj_id.array());
         MethodId mh_method = new MethodId(mh_id, mh_proto, "invokeExact");
 
-        int params = proto.getInputRegistersCount() + /* handle */ 1;
+        int params = proto.getInputRegistersCount();
+        var ret_type = proto.getReturnType().getShorty();
+
+        MethodId raw_method_id = new MethodId(invoker_id, proto, RAW_METHOD_NAME);
+        invoker_def.getClassData().getDirectMethods().add(new EncodedMethod(
+                raw_method_id, ACC_STATIC).withCode(/* wide return */ 2, b -> {
+                    b.sop(GET_OBJECT, b.v(1), field_id);
+                    b.invoke_polymorphic_range(mh_method, proto, params + /* handle */ 1, b.v(1));
+                    gen_move_result(b, ret_type, b.l(0));
+                    gen_return(b, ret_type, b.l(0));
+                }
+        ));
 
         MethodId method_id = new MethodId(invoker_id, proto, METHOD_NAME);
         invoker_def.getClassData().getDirectMethods().add(new EncodedMethod(
-                method_id, ACC_PUBLIC | ACC_STATIC).withCode(1, b -> {
-                    b.sop(GET_OBJECT, b.v(0), field_id);
-                    b.invoke_polymorphic_range(mh_method, proto, params, b.v(0));
-                    switch (proto.getReturnType().getShorty()) {
-                        case 'V' -> b.return_void();
-                        case 'Z', 'B', 'C', 'S', 'I', 'F' -> {
-                            b.move_result(b.l(0));
-                            b.return_(b.l(0));
-                        }
-                        case 'J', 'D' -> {
-                            b.move_result_wide(b.l(0));
-                            b.return_wide(b.l(0));
-                        }
-                        case 'L' -> {
-                            b.move_result_object(b.l(0));
-                            b.return_object(b.l(0));
-                        }
-                        default -> throw shouldNotReachHere();
-                    }
+                method_id, ACC_STATIC).withCode(/* wide return */ 2, b -> {
+                    b.invoke_range(STATIC, raw_method_id, params, b.p(0));
+                    gen_move_result(b, ret_type, b.l(0));
+                    gen_return(b, ret_type, b.l(0));
                 }
         ));
 
@@ -393,14 +410,16 @@ public class Hooks {
 
     private static Method initInvoker(MethodType type, HookTransformer transformer) {
         var erased = type.erase(); // TODO: maybe use basic type?
-        var invoker = loadInvoker(erased);
-        var m_hooker = getDeclaredMethod(invoker, METHOD_NAME, InvokeAccess.ptypes(erased));
-        var original = MethodHandlesFixes.reinterptetHandle(unreflect(m_hooker), type);
-        var impl = new HookTransformerImpl(original, transformer);
+        var invoker_class = loadInvoker(erased);
+        var hooker_method = getDeclaredMethod(invoker_class, RAW_METHOD_NAME, InvokeAccess.ptypes(erased));
+        var backup_method = getDeclaredMethod(invoker_class, METHOD_NAME, InvokeAccess.ptypes(erased));
+        deoptimize(backup_method);
+        var backup_handle = MethodHandlesFixes.reinterptetHandle(unreflect(backup_method), type);
+        var impl = new HookTransformerImpl(backup_handle, transformer);
         var handle = Transformers.makeTransformer(erased, impl);
-        var f_handle = getDeclaredField(invoker, FIELD_NAME);
-        AndroidUnsafe.putObject(invoker, fieldOffset(f_handle), handle);
-        return m_hooker;
+        var handle_field = getDeclaredField(invoker_class, FIELD_NAME);
+        AndroidUnsafe.putObject(invoker_class, fieldOffset(handle_field), handle);
+        return hooker_method;
     }
 
     private static MethodType methodTypeOf(Executable ex) {

@@ -1,7 +1,7 @@
 package com.v7878.vmtools;
 
+import static com.v7878.dex.DexConstants.ACC_CONSTRUCTOR;
 import static com.v7878.dex.DexConstants.ACC_STATIC;
-import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.STATIC;
 import static com.v7878.dex.bytecode.CodeBuilder.Op.GET_OBJECT;
 import static com.v7878.llvm.Core.LLVMAddFunction;
 import static com.v7878.llvm.Core.LLVMAppendBasicBlock;
@@ -85,9 +85,7 @@ import java.util.Objects;
 
 import sun.misc.Cleaner;
 
-// TODO: allow to hook static constructors
 public class Hooks {
-
     private static final int PROT_RX = OsConstants.PROT_READ | OsConstants.PROT_EXEC;
     private static final int PROT_RWX = PROT_RX | OsConstants.PROT_WRITE;
 
@@ -170,8 +168,16 @@ public class Hooks {
         }
     }
 
+    private static void ensureDeclaringClassInitialized(Executable ex) {
+        int flags = ArtMethodUtils.getExecutableFlags(ex);
+        // For static constructor hook, the class CANNOT be initialized
+        if ((flags & ACC_CONSTRUCTOR) == 0 || (flags & ACC_STATIC) == 0) {
+            ClassUtils.ensureClassVisiblyInitialized(ex.getDeclaringClass());
+        }
+    }
+
     public static void deoptimize(Executable ex) {
-        ClassUtils.ensureClassVisiblyInitialized(ex.getDeclaringClass());
+        ensureDeclaringClassInitialized(ex);
         ArtMethodUtils.makeExecutableNonCompilable(ex);
         long entry_point = Modifier.isNative(ex.getModifiers()) ?
                 EntryPoints.getGenericJniTrampoline() :
@@ -263,7 +269,10 @@ public class Hooks {
     }
 
     public enum EntryPointType {
-        DIRECT, CURRENT // TODO: DYNAMIC
+        DIRECT,
+        // TODO: What if the code is in jit-cache?
+        CURRENT
+        // TODO: DYNAMIC
     }
 
     private static long getEntryPoint(Executable ex, EntryPointType type) {
@@ -279,8 +288,8 @@ public class Hooks {
      * hooker is unchanged
      */
     public static void hook(Executable target, Executable hooker, EntryPointType hooker_type) {
-        ClassUtils.ensureClassVisiblyInitialized(target.getDeclaringClass());
-        ClassUtils.ensureClassVisiblyInitialized(hooker.getDeclaringClass());
+        ensureDeclaringClassInitialized(target);
+        ensureDeclaringClassInitialized(hooker);
         hook(target, hooker, getEntryPoint(hooker, hooker_type));
     }
 
@@ -290,8 +299,8 @@ public class Hooks {
      */
     public static void hookSwap(Executable first, EntryPointType first_type,
                                 Executable second, EntryPointType second_type) {
-        ClassUtils.ensureClassVisiblyInitialized(first.getDeclaringClass());
-        ClassUtils.ensureClassVisiblyInitialized(second.getDeclaringClass());
+        ensureDeclaringClassInitialized(first);
+        ensureDeclaringClassInitialized(second);
         long old_first_entry_point = getEntryPoint(first, first_type);
         hook(first, second, getEntryPoint(second, second_type));
         hook(second, first, old_first_entry_point);
@@ -305,9 +314,9 @@ public class Hooks {
     public static void hookBackup(Executable target, EntryPointType target_type,
                                   Executable hooker, EntryPointType hooker_type,
                                   Executable backup) {
-        ClassUtils.ensureClassVisiblyInitialized(target.getDeclaringClass());
-        ClassUtils.ensureClassVisiblyInitialized(hooker.getDeclaringClass());
-        ClassUtils.ensureClassVisiblyInitialized(backup.getDeclaringClass());
+        ensureDeclaringClassInitialized(target);
+        ensureDeclaringClassInitialized(hooker);
+        ensureDeclaringClassInitialized(backup);
         hook(backup, target, getEntryPoint(target, target_type));
         hook(target, hooker, getEntryPoint(hooker, hooker_type));
     }
@@ -317,11 +326,10 @@ public class Hooks {
     }
 
     private static final String INVOKER_NAME = Hooks.class.getName() + "$$$Invoker";
-    private static final String RAW_METHOD_NAME = "raw_invoke";
     private static final String METHOD_NAME = "invoke";
     private static final String FIELD_NAME = "handle";
 
-    private static void gen_move_result(CodeBuilder b, char type, int reg) {
+    private static void move_result_auto(CodeBuilder b, char type, int reg) {
         switch (type) {
             case 'V' -> { /* nop */ }
             case 'Z', 'B', 'C', 'S', 'I', 'F' -> b.move_result(reg);
@@ -331,7 +339,7 @@ public class Hooks {
         }
     }
 
-    private static void gen_return(CodeBuilder b, char type, int reg) {
+    private static void return_auto(CodeBuilder b, char type, int reg) {
         switch (type) {
             case 'V' -> b.return_void();
             case 'Z', 'B', 'C', 'S', 'I', 'F' -> b.return_(reg);
@@ -361,22 +369,13 @@ public class Hooks {
         int params = proto.getInputRegistersCount();
         var ret_type = proto.getReturnType().getShorty();
 
-        MethodId raw_method_id = new MethodId(invoker_id, proto, RAW_METHOD_NAME);
-        invoker_def.getClassData().getDirectMethods().add(new EncodedMethod(
-                raw_method_id, ACC_STATIC).withCode(/* wide return */ 2, b -> {
-                    b.sop(GET_OBJECT, b.v(1), field_id);
-                    b.invoke_polymorphic_range(mh_method, proto, params + /* handle */ 1, b.v(1));
-                    gen_move_result(b, ret_type, b.l(0));
-                    gen_return(b, ret_type, b.l(0));
-                }
-        ));
-
         MethodId method_id = new MethodId(invoker_id, proto, METHOD_NAME);
         invoker_def.getClassData().getDirectMethods().add(new EncodedMethod(
                 method_id, ACC_STATIC).withCode(/* wide return */ 2, b -> {
-                    b.invoke_range(STATIC, raw_method_id, params, b.p(0));
-                    gen_move_result(b, ret_type, b.l(0));
-                    gen_return(b, ret_type, b.l(0));
+                    b.sop(GET_OBJECT, b.v(1), field_id);
+                    b.invoke_polymorphic_range(mh_method, proto, params + /* handle */ 1, b.v(1));
+                    move_result_auto(b, ret_type, b.l(0));
+                    return_auto(b, ret_type, b.l(0));
                 }
         ));
 
@@ -411,10 +410,8 @@ public class Hooks {
     private static Method initInvoker(MethodType type, HookTransformer transformer) {
         var erased = type.erase(); // TODO: maybe use basic type?
         var invoker_class = loadInvoker(erased);
-        var hooker_method = getDeclaredMethod(invoker_class, RAW_METHOD_NAME, InvokeAccess.ptypes(erased));
-        var backup_method = getDeclaredMethod(invoker_class, METHOD_NAME, InvokeAccess.ptypes(erased));
-        deoptimize(backup_method);
-        var backup_handle = MethodHandlesFixes.reinterptetHandle(unreflect(backup_method), type);
+        var hooker_method = getDeclaredMethod(invoker_class, METHOD_NAME, InvokeAccess.ptypes(erased));
+        var backup_handle = MethodHandlesFixes.reinterptetHandle(unreflect(hooker_method), type);
         var impl = new HookTransformerImpl(backup_handle, transformer);
         var handle = Transformers.makeTransformer(erased, impl);
         var handle_field = getDeclaredField(invoker_class, FIELD_NAME);
@@ -449,8 +446,7 @@ public class Hooks {
         Objects.requireNonNull(target);
         Objects.requireNonNull(hooker);
 
-        var type = methodTypeOf(target);
-        var invoker = initInvoker(type, hooker);
+        var invoker = initInvoker(methodTypeOf(target), hooker);
         Cleaner.create(target.getDeclaringClass(), () -> Utils.reachabilityFence(invoker));
         hookSwap(target, target_type, invoker, hooker_type);
     }

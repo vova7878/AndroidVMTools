@@ -50,6 +50,7 @@ import sun.misc.Cleaner;
 
 public class Hooks {
     static {
+        ClassUtils.ensureClassInitialized(EntryPoints.class);
         DebugState.setRuntimeDebugState(DebugState.kNonJavaDebuggable);
     }
 
@@ -63,11 +64,13 @@ public class Hooks {
 
     public static void deoptimize(Executable ex) {
         ensureDeclaringClassInitialized(ex);
-        ArtMethodUtils.makeExecutableNonCompilable(ex);
-        long entry_point = Modifier.isNative(ex.getModifiers()) ?
-                EntryPoints.getGenericJniTrampoline() :
-                EntryPoints.getToInterpreterBridge();
-        ArtMethodUtils.setExecutableEntryPoint(ex, entry_point);
+        try (var ignored = new ScopedSuspendAll(false)) {
+            ArtMethodUtils.makeExecutableNonCompilable(ex);
+            long entry_point = Modifier.isNative(ex.getModifiers()) ?
+                    EntryPoints.getGenericJniTrampoline() :
+                    EntryPoints.getToInterpreterBridge();
+            ArtMethodUtils.setExecutableEntryPoint(ex, entry_point);
+        }
     }
 
     private static byte[] toArray(long value) {
@@ -148,9 +151,11 @@ public class Hooks {
         Cleaner.create(target.getDeclaringClass(), scope::close);
         MemorySegment new_entry_point = NativeCodeBlob.makeCodeBlob(scope,
                 getTrampolineArray(getArtMethod(hooker), hooker_entry_point))[0];
-        ArtMethodUtils.makeExecutableNonCompilable(target);
-        ArtMethodUtils.changeExecutableFlags(target, kAccFastInterpreterToInterpreterInvoke, 0);
-        ArtMethodUtils.setExecutableEntryPoint(target, new_entry_point.nativeAddress());
+        try (var ignored = new ScopedSuspendAll(false)) {
+            ArtMethodUtils.makeExecutableNonCompilable(target);
+            ArtMethodUtils.changeExecutableFlags(target, kAccFastInterpreterToInterpreterInvoke, 0);
+            ArtMethodUtils.setExecutableEntryPoint(target, new_entry_point.nativeAddress());
+        }
     }
 
     public enum EntryPointType {

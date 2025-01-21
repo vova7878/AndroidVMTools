@@ -49,8 +49,17 @@ import java.util.Objects;
 import sun.misc.Cleaner;
 
 public class Hooks {
+    private static void initializeRecursively(Class<?> clazz) {
+        ClassUtils.ensureClassInitialized(clazz);
+        for (Class<?> inner : clazz.getDeclaredClasses()) {
+            ClassUtils.ensureClassInitialized(inner);
+        }
+    }
+
     static {
-        ClassUtils.ensureClassInitialized(EntryPoints.class);
+        // Classes cannot be loaded and initialized during "SuspendAll"
+        initializeRecursively(EntryPoints.class);
+        initializeRecursively(ArtMethodUtils.class);
         DebugState.setRuntimeDebugState(DebugState.kNonJavaDebuggable);
     }
 

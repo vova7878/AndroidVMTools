@@ -49,17 +49,16 @@ import java.util.Objects;
 import sun.misc.Cleaner;
 
 public class Hooks {
-    private static void initializeRecursively(Class<?> clazz) {
-        ClassUtils.ensureClassInitialized(clazz);
-        for (Class<?> inner : clazz.getDeclaredClasses()) {
-            ClassUtils.ensureClassInitialized(inner);
-        }
-    }
-
     static {
         // Classes cannot be loaded and initialized during "SuspendAll"
-        initializeRecursively(EntryPoints.class);
-        initializeRecursively(ArtMethodUtils.class);
+        //noinspection ResultOfMethodCallIgnored
+        EntryPoints.getGenericJniTrampoline();
+        //noinspection ResultOfMethodCallIgnored
+        EntryPoints.getToInterpreterBridge();
+        try {
+            ArtMethodUtils.makeExecutableNonCompilable(null);
+        } catch (Throwable ignored) { /* nop */ }
+
         DebugState.setRuntimeDebugState(DebugState.kNonJavaDebuggable);
     }
 

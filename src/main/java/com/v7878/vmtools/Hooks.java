@@ -23,6 +23,9 @@ import com.v7878.dex.TypeId;
 import com.v7878.dex.bytecode.CodeBuilder;
 import com.v7878.foreign.Arena;
 import com.v7878.foreign.MemorySegment;
+import com.v7878.r8.annotations.DoNotObfuscate;
+import com.v7878.r8.annotations.DoNotShrink;
+import com.v7878.r8.annotations.DoNotShrinkType;
 import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
@@ -49,15 +52,24 @@ import java.util.Objects;
 import sun.misc.Cleaner;
 
 public class Hooks {
+    @DoNotShrinkType
+    private interface Init {
+        @DoNotShrink
+        @DoNotObfuscate
+        @SuppressWarnings("unused")
+        void init();
+    }
+
     static {
         // Classes cannot be loaded and initialized during "SuspendAll"
-        //noinspection ResultOfMethodCallIgnored
-        EntryPoints.getGenericJniTrampoline();
-        //noinspection ResultOfMethodCallIgnored
-        EntryPoints.getToInterpreterBridge();
-        try {
-            ArtMethodUtils.makeExecutableNonCompilable(null);
-        } catch (Throwable ignored) { /* nop */ }
+        {
+            //noinspection ResultOfMethodCallIgnored
+            EntryPoints.getGenericJniTrampoline();
+            //noinspection ResultOfMethodCallIgnored
+            EntryPoints.getToInterpreterBridge();
+            var method = getDeclaredMethod(Init.class, "init");
+            ArtMethodUtils.makeExecutableNonCompilable(method);
+        }
 
         DebugState.setRuntimeDebugState(DebugState.kNonJavaDebuggable);
     }

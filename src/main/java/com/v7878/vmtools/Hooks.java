@@ -3,45 +3,14 @@ package com.v7878.vmtools;
 import static com.v7878.dex.DexConstants.ACC_CONSTRUCTOR;
 import static com.v7878.dex.DexConstants.ACC_STATIC;
 import static com.v7878.dex.bytecode.CodeBuilder.Op.GET_OBJECT;
-import static com.v7878.llvm.Core.LLVMAddFunction;
-import static com.v7878.llvm.Core.LLVMAppendBasicBlock;
-import static com.v7878.llvm.Core.LLVMBuildICmp;
-import static com.v7878.llvm.Core.LLVMBuildRet;
-import static com.v7878.llvm.Core.LLVMGetParams;
-import static com.v7878.llvm.Core.LLVMIntPredicate.LLVMIntEQ;
-import static com.v7878.llvm.Core.LLVMPositionBuilderAtEnd;
-import static com.v7878.llvm.Types.LLVMTypeRef;
-import static com.v7878.llvm.Types.LLVMValueRef;
-import static com.v7878.unsafe.AndroidUnsafe.ARRAY_BYTE_BASE_OFFSET;
-import static com.v7878.unsafe.AndroidUnsafe.PAGE_SIZE;
 import static com.v7878.unsafe.ArtModifiers.kAccFastInterpreterToInterpreterInvoke;
-import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
-import static com.v7878.unsafe.InstructionSet.ARM;
 import static com.v7878.unsafe.InstructionSet.CURRENT_INSTRUCTION_SET;
 import static com.v7878.unsafe.Reflection.fieldOffset;
 import static com.v7878.unsafe.Reflection.getArtMethod;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 import static com.v7878.unsafe.Reflection.unreflect;
-import static com.v7878.unsafe.Utils.shouldNotHappen;
 import static com.v7878.unsafe.Utils.shouldNotReachHere;
-import static com.v7878.unsafe.foreign.BulkLinker.CallSignature;
-import static com.v7878.unsafe.foreign.BulkLinker.CallType.CRITICAL;
-import static com.v7878.unsafe.foreign.BulkLinker.LibrarySymbol;
-import static com.v7878.unsafe.foreign.BulkLinker.MapType.BOOL;
-import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
-import static com.v7878.unsafe.foreign.BulkLinker.MapType.VOID;
-import static com.v7878.unsafe.foreign.BulkLinker.processSymbols;
-import static com.v7878.unsafe.foreign.LibArt.ART;
-import static com.v7878.unsafe.llvm.LLVMBuilder.const_intptr;
-import static com.v7878.unsafe.llvm.LLVMTypes.function_t;
-import static com.v7878.unsafe.llvm.LLVMTypes.int1_t;
-import static com.v7878.unsafe.llvm.LLVMTypes.intptr_t;
-import static com.v7878.unsafe.llvm.LLVMUtils.generateFunctionCodeArray;
-
-import android.system.ErrnoException;
-import android.system.OsConstants;
-import android.util.Log;
 
 import com.v7878.dex.ClassDef;
 import com.v7878.dex.Dex;
@@ -54,15 +23,10 @@ import com.v7878.dex.TypeId;
 import com.v7878.dex.bytecode.CodeBuilder;
 import com.v7878.foreign.Arena;
 import com.v7878.foreign.MemorySegment;
-import com.v7878.misc.Math;
-import com.v7878.r8.annotations.DoNotOptimize;
-import com.v7878.r8.annotations.DoNotShrink;
-import com.v7878.r8.annotations.DoNotShrinkType;
 import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
 import com.v7878.unsafe.DexFileUtils;
-import com.v7878.unsafe.ExtraMemoryAccess;
 import com.v7878.unsafe.NativeCodeBlob;
 import com.v7878.unsafe.Utils;
 import com.v7878.unsafe.Utils.WeakReferenceCache;
@@ -71,7 +35,6 @@ import com.v7878.unsafe.invoke.EmulatedStackFrame;
 import com.v7878.unsafe.invoke.MethodHandlesFixes;
 import com.v7878.unsafe.invoke.Transformers;
 import com.v7878.unsafe.invoke.Transformers.AbstractTransformer;
-import com.v7878.unsafe.io.IOUtils;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
@@ -86,86 +49,15 @@ import java.util.Objects;
 import sun.misc.Cleaner;
 
 public class Hooks {
-    private static final int PROT_RX = OsConstants.PROT_READ | OsConstants.PROT_EXEC;
-    private static final int PROT_RWX = PROT_RX | OsConstants.PROT_WRITE;
-
-    private static void mprotect(long address, long length, int prot) {
-        long end = Math.roundUpUL(address + length, PAGE_SIZE);
-        long begin = Math.roundDownUL(address, PAGE_SIZE);
-        try {
-            IOUtils.mprotect(begin, end - begin, prot);
-        } catch (ErrnoException e) {
-            throw shouldNotHappen(e);
-        }
-    }
-
-    @DoNotShrinkType
-    @DoNotOptimize
-    @SuppressWarnings("SameParameterValue")
-    private abstract static class Native {
-        @DoNotShrink
-        private static final Arena SCOPE = Arena.ofAuto();
-
-        static final MemorySegment CAUSE = SCOPE.allocateFrom("Hook");
-
-        @LibrarySymbol(name = "_ZN3art16ScopedSuspendAllC2EPKcb")
-        @CallSignature(type = CRITICAL, ret = VOID, args = {LONG_AS_WORD, LONG_AS_WORD, BOOL})
-        abstract void SuspendAll(long thiz, long cause, boolean long_suspend);
-
-        @LibrarySymbol(name = "_ZN3art16ScopedSuspendAllD2Ev")
-        @CallSignature(type = CRITICAL, ret = VOID, args = {LONG_AS_WORD})
-        abstract void ResumeAll(long thiz);
-
-        static final Native INSTANCE = AndroidUnsafe.allocateInstance(
-                processSymbols(SCOPE, Native.class, ART));
-    }
-
     static {
-        if (ART_SDK_INT < 33) linker_hook:{
-            MemorySegment art_checker = ART.find("_ZN3art11ClassLinker30ShouldUseInterpreterEntrypointEPNS_9ArtMethodEPKv").orElse(null);
-            if (art_checker == null) {
-                //TODO
-                Log.e(Utils.LOG_TAG, "Can`t find ClassLinker::ShouldUseInterpreterEntrypoint, java hooks may not work in debug mode");
-                break linker_hook;
-            }
-            if (CURRENT_INSTRUCTION_SET == ARM) {
-                //TODO: How to determine what instruction set this function uses? (Full arm or Thumb)
-                Log.e(Utils.LOG_TAG, "ClassLinker::ShouldUseInterpreterEntrypoint hook on arm32 is not supported, java hooks may not work in debug mode");
-                break linker_hook;
-            }
-            final String name = "function";
-            byte[] checker = generateFunctionCodeArray((context, module, builder) -> {
-                LLVMTypeRef f_type = function_t(int1_t(context), intptr_t(context), intptr_t(context));
-                LLVMValueRef function = LLVMAddFunction(module, name, f_type);
-                LLVMValueRef[] args = LLVMGetParams(function);
-
-                //LLVMValueRef method = args[0];
-                LLVMValueRef quick_code = args[1];
-
-                LLVMPositionBuilderAtEnd(builder, LLVMAppendBasicBlock(function, ""));
-                LLVMValueRef test_code_null = LLVMBuildICmp(builder, LLVMIntEQ,
-                        quick_code, const_intptr(context, 0), "");
-
-                //TODO
-                //if (method->IsNative() || method->IsProxyMethod()) { return false; }
-                //if (quick_code == nullptr) { return true; }
-                //if (Thread::Current()->IsForceInterpreter()) { return true; }
-                //if (Thread::Current()->IsAsyncExceptionPending()) { return true; }
-                //return Runtime::Current()->GetClassLinker()->IsQuickToInterpreterBridge(quick_code);
-
-                LLVMBuildRet(builder, test_code_null);
-            }, name);
-
-            mprotect(art_checker.nativeAddress(), checker.length, PROT_RWX);
-            Native.INSTANCE.SuspendAll(0, Native.CAUSE.nativeAddress(), false);
-            try {
-                //Copy at once, without exiting to java code
-                ExtraMemoryAccess.copyMemory(checker, ARRAY_BYTE_BASE_OFFSET, null, art_checker.nativeAddress(), checker.length);
-            } finally {
-                Native.INSTANCE.ResumeAll(0);
-            }
-            mprotect(art_checker.nativeAddress(), checker.length, PROT_RX);
+        // Classes cannot be loaded and initialized during "SuspendAll"
+        {
+            ClassUtils.ensureClassInitialized(EntryPoints.class);
+            var method = getDeclaredMethod(Runnable.class, "run");
+            ArtMethodUtils.makeExecutableNonCompilable(method);
         }
+
+        DebugState.setRuntimeDebugState(DebugState.kNonJavaDebuggable);
     }
 
     private static void ensureDeclaringClassInitialized(Executable ex) {
@@ -178,11 +70,13 @@ public class Hooks {
 
     public static void deoptimize(Executable ex) {
         ensureDeclaringClassInitialized(ex);
-        ArtMethodUtils.makeExecutableNonCompilable(ex);
-        long entry_point = Modifier.isNative(ex.getModifiers()) ?
-                EntryPoints.getGenericJniTrampoline() :
-                EntryPoints.getToInterpreterBridge();
-        ArtMethodUtils.setExecutableEntryPoint(ex, entry_point);
+        try (var ignored = new ScopedSuspendAll(false)) {
+            ArtMethodUtils.makeExecutableNonCompilable(ex);
+            long entry_point = Modifier.isNative(ex.getModifiers()) ?
+                    EntryPoints.getGenericJniTrampoline() :
+                    EntryPoints.getToInterpreterBridge();
+            ArtMethodUtils.setExecutableEntryPoint(ex, entry_point);
+        }
     }
 
     private static byte[] toArray(long value) {
@@ -263,9 +157,11 @@ public class Hooks {
         Cleaner.create(target.getDeclaringClass(), scope::close);
         MemorySegment new_entry_point = NativeCodeBlob.makeCodeBlob(scope,
                 getTrampolineArray(getArtMethod(hooker), hooker_entry_point))[0];
-        ArtMethodUtils.makeExecutableNonCompilable(target);
-        ArtMethodUtils.changeExecutableFlags(target, kAccFastInterpreterToInterpreterInvoke, 0);
-        ArtMethodUtils.setExecutableEntryPoint(target, new_entry_point.nativeAddress());
+        try (var ignored = new ScopedSuspendAll(false)) {
+            ArtMethodUtils.makeExecutableNonCompilable(target);
+            ArtMethodUtils.changeExecutableFlags(target, kAccFastInterpreterToInterpreterInvoke, 0);
+            ArtMethodUtils.setExecutableEntryPoint(target, new_entry_point.nativeAddress());
+        }
     }
 
     public enum EntryPointType {

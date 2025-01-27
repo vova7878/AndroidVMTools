@@ -58,10 +58,6 @@ public class Hooks {
             ArtMethodUtils.makeExecutableNonCompilable(method);
         }
 
-        RuntimeUtils.setRuntimeDebugState(DebugState.kJavaDebuggableAtInit);
-        try (var ignored = new ScopedSuspendAll(false)) {
-            RuntimeUtils.DeoptimizeBootImage();
-        }
         RuntimeUtils.setRuntimeDebugState(DebugState.kNonJavaDebuggable);
     }
 

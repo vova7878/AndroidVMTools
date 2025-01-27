@@ -69,7 +69,7 @@ public class RuntimeUtils {
 
     public static void DeoptimizeBootImage() {
         var instance = Native.INSTANCE;
-        try(var ignored = new ScopedSuspendAll(false)) {
+        try (var ignored = new ScopedSuspendAll(false)) {
             instance.DeoptimizeBootImage(JNIUtils.getRuntimePtr());
         }
     }

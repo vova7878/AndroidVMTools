@@ -1,9 +1,9 @@
 [versions]
-agp = "8.8.0"
-androidmisc = "v0.0.4"
-sun_cleanerstub = "v0.0.2"
-r8_annotations = "v0.0.2"
-panamaport = "10419b2c81"
+agp = "8.8.1"
+androidmisc = "v0.0.5"
+sun_cleanerstub = "v0.0.3"
+r8_annotations = "v0.0.3"
+panamaport = "c31ae67dc1"
 
 [libraries]
 androidmisc = { module = "com.github.vova7878:AndroidMisc", version.ref = "androidmisc" }

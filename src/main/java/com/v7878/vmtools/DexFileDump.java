@@ -10,6 +10,7 @@ import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
 import static com.v7878.unsafe.DexFileUtils.DEXFILE_LAYOUT;
 
 import com.v7878.dex.DexConstants;
+import com.v7878.dex.DexOffsets;
 import com.v7878.foreign.MemorySegment;
 
 import java.nio.ByteBuffer;
@@ -146,7 +147,7 @@ public final class DexFileDump {
 
         putIntN(header, DEX_MAGIC);
         putIntN(header + FILE_SIZE_OFFSET, file_size);
-        putIntN(header + HEADER_SIZE_OFFSET, DexConstants.HEADER_SIZE);
+        putIntN(header + HEADER_SIZE_OFFSET, DexOffsets.BASE_HEADER_SIZE);
         putIntN(header + ENDIAN_TAG_OFFSET, DexConstants.ENDIAN_CONSTANT);
 
         if (skip_checksum_and_signature) {

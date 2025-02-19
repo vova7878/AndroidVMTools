@@ -1,12 +1,14 @@
 package com.v7878.vmtools;
 
+import static com.v7878.dex.DexConstants.ACC_FINAL;
+import static com.v7878.dex.DexConstants.ACC_PRIVATE;
 import static com.v7878.dex.DexConstants.ACC_PUBLIC;
 import static com.v7878.dex.DexConstants.ACC_STATIC;
-import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.INTERFACE;
-import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.STATIC;
-import static com.v7878.dex.bytecode.CodeBuilder.InvokeKind.SUPER;
-import static com.v7878.dex.bytecode.CodeBuilder.Op.GET_OBJECT;
-import static com.v7878.dex.bytecode.CodeBuilder.Test.EQ;
+import static com.v7878.dex.builder.CodeBuilder.InvokeKind.INTERFACE;
+import static com.v7878.dex.builder.CodeBuilder.InvokeKind.STATIC;
+import static com.v7878.dex.builder.CodeBuilder.InvokeKind.SUPER;
+import static com.v7878.dex.builder.CodeBuilder.Op.GET_OBJECT;
+import static com.v7878.dex.builder.CodeBuilder.Test.EQ;
 import static com.v7878.unsafe.ArtMethodUtils.makeMethodInheritable;
 import static com.v7878.unsafe.ClassUtils.makeClassInheritable;
 import static com.v7878.unsafe.DexFileUtils.loadClass;
@@ -20,19 +22,18 @@ import static com.v7878.unsafe.Utils.searchMethod;
 import static com.v7878.unsafe.VM.objectSizeField;
 import static com.v7878.unsafe.VM.setObjectClass;
 
-import com.v7878.dex.ClassDef;
-import com.v7878.dex.Dex;
-import com.v7878.dex.EncodedField;
-import com.v7878.dex.EncodedMethod;
-import com.v7878.dex.FieldId;
-import com.v7878.dex.MethodId;
-import com.v7878.dex.ProtoId;
-import com.v7878.dex.TypeId;
+import com.v7878.dex.DexIO;
+import com.v7878.dex.builder.ClassBuilder;
+import com.v7878.dex.immutable.ClassDef;
+import com.v7878.dex.immutable.Dex;
+import com.v7878.dex.immutable.FieldId;
+import com.v7878.dex.immutable.MethodId;
+import com.v7878.dex.immutable.ProtoId;
+import com.v7878.dex.immutable.TypeId;
 import com.v7878.unsafe.AndroidUnsafe;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.Objects;
 import java.util.function.BiFunction;
 
@@ -84,58 +85,77 @@ public class ClassLoaderHooks {
             Method fc = searchMethod(getMethods(lc), "findClass", String.class);
             makeMethodInheritable(fc);
 
-            ProtoId apply_proto = new ProtoId(TypeId.OBJECT, TypeId.OBJECT, TypeId.OBJECT);
+            TypeId bf = TypeId.of(BiFunction.class);
+            ProtoId apply_proto = ProtoId.of(TypeId.OBJECT, TypeId.OBJECT, TypeId.OBJECT);
 
+            // TODO: Dynamic name selection
             String hook_name = lc.getName() + "$$$SyntheticHook";
-            TypeId hook_id = TypeId.of(hook_name);
-            ClassDef hook_def = new ClassDef(hook_id);
-            hook_def.setSuperClass(TypeId.of(lc));
-            FieldId impl_f_id = new FieldId(hook_id, TypeId.of(BiFunction.class), "impl");
-            hook_def.getClassData().getStaticFields().add(new EncodedField(
-                    impl_f_id, Modifier.STATIC, null
-            ));
-            var hook_find_id = new MethodId(hook_id, new ProtoId(
-                    TypeId.of(Class.class), TypeId.of(String.class)), "findClass");
-            hook_def.getClassData().getVirtualMethods().add(new EncodedMethod(
-                    hook_find_id, ACC_PUBLIC).withCode(1, b -> b
-                    .sop(GET_OBJECT, b.l(0), impl_f_id)
-                    .invoke(INTERFACE, new MethodId(
-                                    TypeId.of(BiFunction.class), apply_proto, "apply"),
-                            b.l(0), b.this_(), b.p(0))
-                    .move_result_object(b.l(0))
-                    .check_cast(b.l(0), TypeId.of(Class.class))
-                    .if_testz(EQ, b.l(0), ":null")
-                    .return_object(b.l(0))
-                    .label(":null")
-                    .invoke(SUPER, MethodId.of(fc), b.this_(), b.p(0))
-                    .move_result_object(b.l(0))
-                    .return_object(b.l(0))
-            ));
-            var super_find_id = new MethodId(hook_id, new ProtoId(TypeId.of(Class.class),
-                    hook_id, TypeId.of(String.class)), "superFindClass");
-            hook_def.getClassData().getDirectMethods().add(new EncodedMethod(super_find_id,
-                    ACC_PUBLIC | ACC_STATIC).withCode(0, b -> b
-                    .invoke(SUPER, hook_find_id, b.p(0), b.p(1))
-                    .move_result_object(b.v(0))
-                    .return_object(b.v(0))
-            ));
+            TypeId hook_id = TypeId.ofName(hook_name);
+
+            var impl_f_id = FieldId.of(hook_id, "impl", bf);
+            var hook_find_id = MethodId.of(hook_id, "findClass",
+                    ProtoId.of(TypeId.of(Class.class), TypeId.of(String.class)));
+            var super_find_id = MethodId.of(hook_id, "superFindClass",
+                    ProtoId.of(TypeId.of(Class.class), hook_id, TypeId.of(String.class)));
+
+            ClassDef hook_def = ClassBuilder.build(hook_id, cb -> cb
+                    .withSuperClass(TypeId.of(lc))
+                    .withFlags(ACC_PUBLIC | ACC_FINAL)
+                    .withField(fb -> fb
+                            .of(impl_f_id)
+                            .withFlags(ACC_PRIVATE | ACC_STATIC | ACC_FINAL)
+                    )
+                    .withMethod(mb -> mb
+                            .of(hook_find_id)
+                            .withFlags(ACC_PUBLIC)
+                            .withCode(1, ib -> ib
+                                    .sop(GET_OBJECT, ib.l(0), impl_f_id)
+                                    .invoke(INTERFACE, MethodId.of(bf, "apply", apply_proto),
+                                            ib.l(0), ib.this_(), ib.p(0))
+                                    .move_result_object(ib.l(0))
+                                    .check_cast(ib.l(0), TypeId.of(Class.class))
+                                    .if_testz(EQ, ib.l(0), ":null")
+                                    .return_object(ib.l(0))
+
+                                    .label(":null")
+                                    .invoke(SUPER, MethodId.of(fc), ib.this_(), ib.p(0))
+                                    .move_result_object(ib.l(0))
+                                    .return_object(ib.l(0))
+                            )
+                    )
+                    .withMethod(mb -> mb
+                            .of(super_find_id)
+                            .withFlags(ACC_PUBLIC | ACC_STATIC)
+                            .withCode(0, ib -> ib
+                                    .invoke(SUPER, hook_find_id, ib.p(0), ib.p(1))
+                                    .move_result_object(ib.v(0))
+                                    .return_object(ib.v(0))
+                            )
+                    )
+            );
 
             String backup_name = hook_name + "$$$Backup";
-            TypeId backup_id = TypeId.of(backup_name);
-            ClassDef backup_def = new ClassDef(backup_id);
-            backup_def.setSuperClass(TypeId.OBJECT);
-            backup_def.getInterfaces().add(TypeId.of(BiFunction.class));
-            var backup_find_id = new MethodId(backup_id, apply_proto, "apply");
-            backup_def.getClassData().getVirtualMethods().add(new EncodedMethod(
-                    backup_find_id, ACC_PUBLIC).withCode(0, b -> b
-                    .check_cast(b.p(0), hook_id)
-                    .check_cast(b.p(1), TypeId.of(String.class))
-                    .invoke(STATIC, super_find_id, b.p(0), b.p(1))
-                    .move_result_object(b.v(0))
-                    .return_object(b.v(0))
-            ));
+            TypeId backup_id = TypeId.ofName(backup_name);
+            var backup_find_id = MethodId.of(backup_id, "apply", apply_proto);
 
-            DexFile dex = openDexFile(new Dex(hook_def, backup_def).compile());
+            ClassDef backup_def = ClassBuilder.build(backup_id, cb -> cb
+                    .withSuperClass(TypeId.OBJECT)
+                    .withInterfaces(bf)
+                    .withFlags(ACC_PUBLIC | ACC_FINAL)
+                    .withMethod(mb -> mb
+                            .of(backup_find_id)
+                            .withFlags(ACC_PUBLIC)
+                            .withCode(0, ib -> ib
+                                    .check_cast(ib.p(0), hook_id)
+                                    .check_cast(ib.p(1), TypeId.of(String.class))
+                                    .invoke(STATIC, super_find_id, ib.p(0), ib.p(1))
+                                    .move_result_object(ib.v(0))
+                                    .return_object(ib.v(0))
+                            )
+                    )
+            );
+
+            DexFile dex = openDexFile(DexIO.write(Dex.of(hook_def, backup_def)));
             setTrusted(dex);
 
             Class<?> hook = loadClass(dex, hook_name, lc.getClassLoader());

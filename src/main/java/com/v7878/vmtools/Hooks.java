@@ -1,8 +1,11 @@
 package com.v7878.vmtools;
 
 import static com.v7878.dex.DexConstants.ACC_CONSTRUCTOR;
+import static com.v7878.dex.DexConstants.ACC_FINAL;
+import static com.v7878.dex.DexConstants.ACC_PRIVATE;
+import static com.v7878.dex.DexConstants.ACC_PUBLIC;
 import static com.v7878.dex.DexConstants.ACC_STATIC;
-import static com.v7878.dex.bytecode.CodeBuilder.Op.GET_OBJECT;
+import static com.v7878.dex.builder.CodeBuilder.Op.GET_OBJECT;
 import static com.v7878.unsafe.ArtModifiers.kAccFastInterpreterToInterpreterInvoke;
 import static com.v7878.unsafe.InstructionSet.CURRENT_INSTRUCTION_SET;
 import static com.v7878.unsafe.Reflection.fieldOffset;
@@ -12,17 +15,18 @@ import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 import static com.v7878.unsafe.Reflection.unreflect;
 import static com.v7878.unsafe.Utils.shouldNotReachHere;
 
-import com.v7878.dex.ClassDef;
-import com.v7878.dex.Dex;
-import com.v7878.dex.EncodedField;
-import com.v7878.dex.EncodedMethod;
-import com.v7878.dex.FieldId;
-import com.v7878.dex.MethodId;
-import com.v7878.dex.ProtoId;
-import com.v7878.dex.TypeId;
-import com.v7878.dex.bytecode.CodeBuilder;
+import com.v7878.dex.DexIO;
+import com.v7878.dex.builder.ClassBuilder;
+import com.v7878.dex.builder.CodeBuilder;
+import com.v7878.dex.immutable.ClassDef;
+import com.v7878.dex.immutable.Dex;
+import com.v7878.dex.immutable.FieldId;
+import com.v7878.dex.immutable.MethodId;
+import com.v7878.dex.immutable.ProtoId;
+import com.v7878.dex.immutable.TypeId;
 import com.v7878.foreign.Arena;
 import com.v7878.foreign.MemorySegment;
+import com.v7878.sun.cleaner.SunCleaner;
 import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
@@ -46,8 +50,6 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-
-import sun.misc.Cleaner;
 
 public class Hooks {
     static {
@@ -155,7 +157,7 @@ public class Hooks {
         Objects.requireNonNull(target);
         Objects.requireNonNull(hooker);
         Arena scope = Arena.ofShared();
-        Cleaner.create(target.getDeclaringClass(), scope::close);
+        SunCleaner.systemCleaner().register(target.getDeclaringClass(), scope::close);
         MemorySegment new_entry_point = NativeCodeBlob.makeCodeBlob(scope,
                 getTrampolineArray(getArtMethod(hooker), hooker_entry_point))[0];
         try (var ignored = new ScopedSuspendAll(false)) {
@@ -247,36 +249,42 @@ public class Hooks {
     }
 
     private static byte[] generateInvoker(MethodType type) {
+        ProtoId proto = ProtoId.of(type);
+
         TypeId mh_id = TypeId.of(MethodHandle.class);
         TypeId obj_id = TypeId.OBJECT;
 
-        ProtoId proto = ProtoId.of(type);
+        ProtoId mh_proto = ProtoId.of(obj_id, obj_id.array());
+        MethodId mh_method = MethodId.of(mh_id, "invokeExact", mh_proto);
 
-        TypeId invoker_id = TypeId.of(INVOKER_NAME);
-        ClassDef invoker_def = new ClassDef(invoker_id);
-        invoker_def.setSuperClass(obj_id);
+        TypeId invoker_id = TypeId.ofName(INVOKER_NAME);
+        FieldId field_id = FieldId.of(invoker_id, FIELD_NAME, mh_id);
+        MethodId method_id = MethodId.of(invoker_id, METHOD_NAME, proto);
 
-        FieldId field_id = new FieldId(invoker_id, mh_id, FIELD_NAME);
-        invoker_def.getClassData().getStaticFields().add(new EncodedField(
-                field_id, ACC_STATIC));
-
-        ProtoId mh_proto = new ProtoId(obj_id, obj_id.array());
-        MethodId mh_method = new MethodId(mh_id, mh_proto, "invokeExact");
-
-        int params = proto.getInputRegistersCount();
+        int params = proto.getInputRegisterCount();
         var ret_type = proto.getReturnType().getShorty();
 
-        MethodId method_id = new MethodId(invoker_id, proto, METHOD_NAME);
-        invoker_def.getClassData().getDirectMethods().add(new EncodedMethod(
-                method_id, ACC_STATIC).withCode(/* wide return */ 2, b -> {
-                    b.sop(GET_OBJECT, b.v(1), field_id);
-                    b.invoke_polymorphic_range(mh_method, proto, params + /* handle */ 1, b.v(1));
-                    move_result_auto(b, ret_type, b.l(0));
-                    return_auto(b, ret_type, b.l(0));
-                }
-        ));
+        ClassDef invoker_def = ClassBuilder.build(invoker_id, cb -> cb
+                .withSuperClass(obj_id)
+                .withFlags(ACC_PUBLIC | ACC_FINAL)
+                .withField(fb -> fb
+                        .of(field_id)
+                        .withFlags(ACC_PRIVATE | ACC_STATIC | ACC_FINAL)
+                )
+                .withMethod(mb -> mb
+                        .of(method_id)
+                        .withFlags(ACC_PUBLIC | ACC_STATIC)
+                        .withCode(/* wide return */ 2, ib -> {
+                            ib.sop(GET_OBJECT, ib.v(1), field_id);
+                            ib.invoke_polymorphic_range(mh_method, proto,
+                                    params + /* handle */ 1, ib.v(1));
+                            move_result_auto(ib, ret_type, ib.l(0));
+                            return_auto(ib, ret_type, ib.l(0));
+                        })
+                )
+        );
 
-        return new Dex(invoker_def).compile();
+        return DexIO.write(Dex.of(invoker_def));
     }
 
     private static final WeakReferenceCache<MethodType, byte[]>
@@ -344,7 +352,7 @@ public class Hooks {
         Objects.requireNonNull(hooker);
 
         var invoker = initInvoker(methodTypeOf(target), hooker);
-        Cleaner.create(target.getDeclaringClass(), () -> Utils.reachabilityFence(invoker));
+        SunCleaner.systemCleaner().register(target.getDeclaringClass(), () -> Utils.reachabilityFence(invoker));
         hookSwap(target, target_type, invoker, hooker_type);
     }
 }

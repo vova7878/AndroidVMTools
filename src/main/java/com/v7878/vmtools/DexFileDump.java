@@ -234,7 +234,7 @@ public final class DexFileDump {
         Map<Long, Set<Integer>> data = new HashMap<>();
         for (var clazz : classes) {
             int index = VM.getDexClassDefIndex(clazz);
-            if (index == NO_INDEX) {
+            if (index == (NO_INDEX & 0xffff)) {
                 throw new IllegalArgumentException(
                         String.format("Class %s has no index", clazz));
             }

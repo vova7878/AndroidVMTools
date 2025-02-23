@@ -7,7 +7,7 @@ import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.VOID;
 import static com.v7878.unsafe.foreign.BulkLinker.processSymbols;
 import static com.v7878.unsafe.foreign.LibArt.ART;
-import static com.v7878.vmtools.RuntimeUtils.DebugState.kNonJavaDebuggable;
+import static com.v7878.vmtools.Runtime.DebugState.kNonJavaDebuggable;
 
 import com.v7878.foreign.Arena;
 import com.v7878.r8.annotations.DoNotOptimize;
@@ -21,7 +21,7 @@ import com.v7878.unsafe.foreign.BulkLinker.LibrarySymbol;
 
 import java.util.Objects;
 
-public class RuntimeUtils {
+public class Runtime {
     public enum DebugState {
         // This doesn't support any debug features / method tracing. This is the expected state usually.
         kNonJavaDebuggable,

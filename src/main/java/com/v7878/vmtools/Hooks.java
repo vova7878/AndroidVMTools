@@ -39,7 +39,7 @@ import com.v7878.unsafe.invoke.EmulatedStackFrame;
 import com.v7878.unsafe.invoke.MethodHandlesFixes;
 import com.v7878.unsafe.invoke.Transformers;
 import com.v7878.unsafe.invoke.Transformers.AbstractTransformer;
-import com.v7878.vmtools.RuntimeUtils.DebugState;
+import com.v7878.vmtools.Runtime.DebugState;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
@@ -60,7 +60,7 @@ public class Hooks {
             ArtMethodUtils.makeExecutableNonCompilable(method);
         }
 
-        RuntimeUtils.setRuntimeDebugState(DebugState.kNonJavaDebuggable);
+        Runtime.setRuntimeDebugState(DebugState.kNonJavaDebuggable);
     }
 
     private static void ensureDeclaringClassInitialized(Executable ex) {

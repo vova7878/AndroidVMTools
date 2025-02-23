@@ -1,5 +1,6 @@
 package com.v7878.vmtools;
 
+import static com.v7878.dex.DexConstants.NO_INDEX;
 import static com.v7878.foreign.MemoryLayout.PathElement.groupElement;
 import static com.v7878.foreign.ValueLayout.JAVA_BYTE;
 import static com.v7878.unsafe.AndroidUnsafe.getBooleanN;
@@ -8,15 +9,27 @@ import static com.v7878.unsafe.AndroidUnsafe.getWordN;
 import static com.v7878.unsafe.AndroidUnsafe.putIntN;
 import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
 import static com.v7878.unsafe.DexFileUtils.DEXFILE_LAYOUT;
+import static com.v7878.unsafe.DexFileUtils.getDexFileStruct;
 
 import com.v7878.dex.DexConstants;
+import com.v7878.dex.DexIO;
 import com.v7878.dex.DexOffsets;
+import com.v7878.dex.ReadOptions;
+import com.v7878.dex.immutable.ClassDef;
+import com.v7878.dex.immutable.Dex;
 import com.v7878.foreign.MemorySegment;
+import com.v7878.unsafe.DexFileUtils;
+import com.v7878.unsafe.VM;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.zip.Adler32;
 
 public final class DexFileDump {
@@ -202,6 +215,10 @@ public final class DexFileDump {
         return getDexFileData(dexfile_struct).toArray(JAVA_BYTE);
     }
 
+    public static byte[] getDexFileContent(Class<?> clazz) {
+        return getDexFileContent(getDexFileStruct(clazz));
+    }
+
     public static int getHeaderOffset(long dexfile_struct) {
         if (isCompactDex(dexfile_struct)) return 0;
         long header = getDexFileHeader(dexfile_struct);
@@ -211,5 +228,26 @@ public final class DexFileDump {
             return getIntN(header + CONTAINER_OFF_OFFSET);
         throw new IllegalStateException(
                 "Unsupported dex version: " + Integer.toHexString(version));
+    }
+
+    public static Dex readDex(Class<?>... classes) {
+        Map<Long, Set<Integer>> data = new HashMap<>();
+        for (var clazz : classes) {
+            int index = VM.getDexClassDefIndex(clazz);
+            if (index == NO_INDEX) {
+                throw new IllegalArgumentException(
+                        String.format("Class %s has no index", clazz));
+            }
+            long struct = DexFileUtils.getDexFileStruct(clazz);
+            data.computeIfAbsent(struct, v -> new HashSet<>()).add(index);
+        }
+        var class_defs = new ArrayList<ClassDef>(classes.length);
+        for (var entry : data.entrySet()) {
+            int header_offset = getHeaderOffset(entry.getKey());
+            class_defs.addAll(DexIO.readSingleDex(ReadOptions.defaultOptions(),
+                    getDexFileContent(entry.getKey()), 0, header_offset,
+                    entry.getValue().stream().mapToInt(v -> v).toArray()).getClasses());
+        }
+        return Dex.of(class_defs);
     }
 }

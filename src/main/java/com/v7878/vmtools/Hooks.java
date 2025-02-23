@@ -261,7 +261,7 @@ public class Hooks {
         FieldId field_id = FieldId.of(invoker_id, FIELD_NAME, mh_id);
         MethodId method_id = MethodId.of(invoker_id, METHOD_NAME, proto);
 
-        int params = proto.getInputRegisterCount();
+        int params = proto.countInputRegisters();
         var ret_type = proto.getReturnType().getShorty();
 
         ClassDef invoker_def = ClassBuilder.build(invoker_id, cb -> cb

@@ -15,7 +15,7 @@ import static com.v7878.unsafe.DexFileUtils.loadClass;
 import static com.v7878.unsafe.DexFileUtils.openDexFile;
 import static com.v7878.unsafe.DexFileUtils.setTrusted;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
-import static com.v7878.unsafe.Reflection.getMethods;
+import static com.v7878.unsafe.Reflection.getDeclaredVirtualMethods;
 import static com.v7878.unsafe.Utils.check;
 import static com.v7878.unsafe.Utils.nothrows_run;
 import static com.v7878.unsafe.Utils.searchMethod;
@@ -74,6 +74,16 @@ public class ClassLoaderHooks {
         }
     }
 
+    @SuppressWarnings("SameParameterValue")
+    private static Method findMethod(Class<?> clazz, String name, Class<?>... args) {
+        while (clazz != null) {
+            var method = searchMethod(getDeclaredVirtualMethods(clazz), name, false, args);
+            if (method != null) return method;
+            clazz = clazz.getSuperclass();
+        }
+        throw new AssertionError();
+    }
+
     @SuppressWarnings("unchecked")
     public static void hookFindClass(ClassLoader loader, FindClassI impl) {
         Objects.requireNonNull(loader);
@@ -81,8 +91,8 @@ public class ClassLoaderHooks {
         synchronized (LOCK) {
             Class<?> lc = loader.getClass();
             makeClassInheritable(lc);
-            // note: maybe super method
-            Method fc = searchMethod(getMethods(lc), "findClass", String.class);
+            // Note: maybe super method
+            Method fc = findMethod(lc, "findClass", String.class);
             makeMethodInheritable(fc);
 
             TypeId bf = TypeId.of(BiFunction.class);

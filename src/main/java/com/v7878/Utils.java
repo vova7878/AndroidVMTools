@@ -9,7 +9,7 @@ public class Utils {
         try {
             Class.forName(name, false, loader);
             return true;
-        } catch (Throwable th) {
+        } catch (ClassNotFoundException th) {
             return false;
         }
     }

@@ -1,5 +1,6 @@
 package com.v7878.vmtools;
 
+import static com.v7878.Utils.generateClassName;
 import static com.v7878.dex.DexConstants.ACC_FINAL;
 import static com.v7878.dex.DexConstants.ACC_PRIVATE;
 import static com.v7878.dex.DexConstants.ACC_PUBLIC;
@@ -85,21 +86,23 @@ public class ClassLoaderHooks {
     }
 
     @SuppressWarnings("unchecked")
-    public static void hookFindClass(ClassLoader loader, FindClassI impl) {
-        Objects.requireNonNull(loader);
+    public static void hookFindClass(ClassLoader target, FindClassI impl) {
+        Objects.requireNonNull(target);
         Objects.requireNonNull(impl);
         synchronized (LOCK) {
-            Class<?> lc = loader.getClass();
-            makeClassInheritable(lc);
+            Class<?> target_class = target.getClass();
+            makeClassInheritable(target_class);
+            ClassLoader target_loader = target_class.getClassLoader();
+
             // Note: maybe super method
-            Method fc = findMethod(lc, "findClass", String.class);
+            Method fc = findMethod(target_class, "findClass", String.class);
             makeMethodInheritable(fc);
 
             TypeId bf = TypeId.of(BiFunction.class);
             ProtoId apply_proto = ProtoId.of(TypeId.OBJECT, TypeId.OBJECT, TypeId.OBJECT);
 
-            // TODO: Dynamic name selection
-            String hook_name = lc.getName() + "$$$SyntheticHook";
+            String hook_name = generateClassName(target_loader,
+                    target_class.getName() + "$$$SyntheticHook");
             TypeId hook_id = TypeId.ofName(hook_name);
 
             var impl_f_id = FieldId.of(hook_id, "impl", bf);
@@ -109,7 +112,7 @@ public class ClassLoaderHooks {
                     ProtoId.of(TypeId.of(Class.class), hook_id, TypeId.of(String.class)));
 
             ClassDef hook_def = ClassBuilder.build(hook_id, cb -> cb
-                    .withSuperClass(TypeId.of(lc))
+                    .withSuperClass(TypeId.of(target_class))
                     .withFlags(ACC_PUBLIC | ACC_FINAL)
                     .withField(fb -> fb
                             .of(impl_f_id)
@@ -168,17 +171,17 @@ public class ClassLoaderHooks {
             DexFile dex = openDexFile(DexIO.write(Dex.of(hook_def, backup_def)));
             setTrusted(dex);
 
-            Class<?> hook = loadClass(dex, hook_name, lc.getClassLoader());
-            Class<?> backup = loadClass(dex, backup_name, lc.getClassLoader());
+            Class<?> hook = loadClass(dex, hook_name, target_loader);
+            Class<?> backup = loadClass(dex, backup_name, target_loader);
 
             var backup_instance = (BiFunction<ClassLoader, String, Class<?>>)
                     AndroidUnsafe.allocateInstance(backup);
             Field impl_f = getDeclaredField(hook, "impl");
             nothrows_run(() -> impl_f.set(null, new FindClassCallback(impl, backup_instance)));
 
-            check(objectSizeField(lc) == objectSizeField(hook), AssertionError::new);
+            check(objectSizeField(target_class) == objectSizeField(hook), AssertionError::new);
 
-            setObjectClass(loader, hook);
+            setObjectClass(target, hook);
         }
     }
 }

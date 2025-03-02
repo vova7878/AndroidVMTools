@@ -13,11 +13,9 @@ import static com.v7878.unsafe.Reflection.getArtMethod;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 import static com.v7878.unsafe.Reflection.unreflect;
-import static com.v7878.unsafe.Utils.shouldNotReachHere;
 
 import com.v7878.dex.DexIO;
 import com.v7878.dex.builder.ClassBuilder;
-import com.v7878.dex.builder.CodeBuilder;
 import com.v7878.dex.immutable.ClassDef;
 import com.v7878.dex.immutable.Dex;
 import com.v7878.dex.immutable.FieldId;
@@ -35,10 +33,8 @@ import com.v7878.unsafe.NativeCodeBlob;
 import com.v7878.unsafe.Utils;
 import com.v7878.unsafe.Utils.WeakReferenceCache;
 import com.v7878.unsafe.access.InvokeAccess;
-import com.v7878.unsafe.invoke.EmulatedStackFrame;
 import com.v7878.unsafe.invoke.MethodHandlesFixes;
 import com.v7878.unsafe.invoke.Transformers;
-import com.v7878.unsafe.invoke.Transformers.AbstractTransformer;
 import com.v7878.vmtools.Runtime.DebugState;
 
 import java.lang.invoke.MethodHandle;
@@ -220,33 +216,9 @@ public class Hooks {
         hook(target, hooker, getEntryPoint(hooker, hooker_type));
     }
 
-    public interface HookTransformer {
-        void transform(MethodHandle original, EmulatedStackFrame stack) throws Throwable;
-    }
-
     private static final String INVOKER_NAME = Hooks.class.getName() + "$$$Invoker";
     private static final String METHOD_NAME = "invoke";
     private static final String FIELD_NAME = "handle";
-
-    private static void move_result_auto(CodeBuilder b, char type, int reg) {
-        switch (type) {
-            case 'V' -> { /* nop */ }
-            case 'Z', 'B', 'C', 'S', 'I', 'F' -> b.move_result(reg);
-            case 'J', 'D' -> b.move_result_wide(reg);
-            case 'L' -> b.move_result_object(reg);
-            default -> throw shouldNotReachHere();
-        }
-    }
-
-    private static void return_auto(CodeBuilder b, char type, int reg) {
-        switch (type) {
-            case 'V' -> b.return_void();
-            case 'Z', 'B', 'C', 'S', 'I', 'F' -> b.return_(reg);
-            case 'J', 'D' -> b.return_wide(reg);
-            case 'L' -> b.return_object(reg);
-            default -> throw shouldNotReachHere();
-        }
-    }
 
     private static byte[] generateInvoker(MethodType type) {
         ProtoId proto = ProtoId.of(type);
@@ -278,8 +250,8 @@ public class Hooks {
                             ib.sop(GET_OBJECT, ib.v(1), field_id);
                             ib.invoke_polymorphic_range(mh_method, proto,
                                     params + /* handle */ 1, ib.v(1));
-                            move_result_auto(ib, ret_type, ib.l(0));
-                            return_auto(ib, ret_type, ib.l(0));
+                            ib.move_result_shorty(ret_type, ib.l(0));
+                            ib.return_shorty(ret_type, ib.l(0));
                         })
                 )
         );
@@ -294,22 +266,6 @@ public class Hooks {
         ClassLoader loader = Utils.newEmptyClassLoader(Object.class.getClassLoader());
         var dexfile = DexFileUtils.openDexFile(invokers_cache.get(type, Hooks::generateInvoker));
         return DexFileUtils.loadClass(dexfile, INVOKER_NAME, loader);
-    }
-
-    private static final class HookTransformerImpl extends AbstractTransformer {
-        private final MethodHandle original;
-        private final HookTransformer transformer;
-
-        HookTransformerImpl(MethodHandle original, HookTransformer transformer) {
-            this.original = original;
-            this.transformer = transformer;
-        }
-
-        @Override
-        protected void transform(MethodHandle thiz, EmulatedStackFrame stack) throws Throwable {
-            stack.setType(original.type());
-            transformer.transform(original, stack);
-        }
     }
 
     private static Method initInvoker(MethodType type, HookTransformer transformer) {

@@ -127,11 +127,7 @@ public final class JVMTI {
     }
 
     @DoNotShrink
-    static final Arena JVMTI_SCOPE = Arena.ofShared();
-
-    public static void close() {
-        JVMTI_SCOPE.close();
-    }
+    static final Arena JVMTI_SCOPE = Arena.ofAuto();
 
     public static final GroupLayout JVMTI_INTERFACE_LAYOUT = structLayout(
             ADDRESS.withName("reserved1"),
@@ -741,10 +737,6 @@ public final class JVMTI {
         throw new JVMTIException(error);
     }
 
-    private static void checkScope() {
-        JavaForeignAccess.checkValidState(JVMTI_SCOPE.scope());
-    }
-
     public static String GetErrorName(int error) {
         return switch (error) {
             case JVMTI_ERROR_NONE -> "NONE";
@@ -808,7 +800,6 @@ public final class JVMTI {
 
     @SafeVarargs
     public static void RedefineClasses(Pair<Class<?>, byte[]>... class_definitions) throws JVMTIException {
-        checkScope();
         Objects.requireNonNull(class_definitions);
         int entries = class_definitions.length;
         if (entries == 0) {
@@ -861,7 +852,6 @@ public final class JVMTI {
     }
 
     public static long GetObjectSize(Object obj) throws JVMTIException {
-        checkScope();
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment size_ptr = scope.allocate(JAVA_LONG);
             checkError(Native.INSTANCE.GetObjectSize(JVMTI_ENV, obj, size_ptr.nativeAddress()));
@@ -870,7 +860,6 @@ public final class JVMTI {
     }
 
     public static void GetPotentialCapabilities(JVMTICapabilities capabilities) throws JVMTIException {
-        checkScope();
         Objects.requireNonNull(capabilities);
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment ptr = scope.allocate(JVMTICapabilities.LAYOUT);
@@ -880,7 +869,6 @@ public final class JVMTI {
     }
 
     public static void AddCapabilities(JVMTICapabilities capabilities) throws JVMTIException {
-        checkScope();
         Objects.requireNonNull(capabilities);
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment ptr = scope.allocate(JVMTICapabilities.LAYOUT);
@@ -890,7 +878,6 @@ public final class JVMTI {
     }
 
     public static void RelinquishCapabilities(JVMTICapabilities capabilities) throws JVMTIException {
-        checkScope();
         Objects.requireNonNull(capabilities);
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment ptr = scope.allocate(JVMTICapabilities.LAYOUT);
@@ -900,42 +887,34 @@ public final class JVMTI {
     }
 
     static void SetEventCallbacks(long callbacks, int size_of_callbacks) throws JVMTIException {
-        checkScope();
         checkError(Native.INSTANCE.SetEventCallbacks(JVMTI_ENV, callbacks, size_of_callbacks));
     }
 
     public static void SetEventNotificationMode(int mode, int event_type, Thread event_thread) throws JVMTIException {
-        checkScope();
         checkError(Native.INSTANCE.SetEventNotificationMode(JVMTI_ENV, mode, event_type, event_thread));
     }
 
     public static void SetBreakpoint(Method method, long location) throws JVMTIException {
-        checkScope();
         checkError(Native.INSTANCE.SetBreakpoint(JVMTI_ENV, JNIUtils.FromReflectedMethod(method), location));
     }
 
     public static void ClearBreakpoint(Method method, long location) throws JVMTIException {
-        checkScope();
         checkError(Native.INSTANCE.ClearBreakpoint(JVMTI_ENV, JNIUtils.FromReflectedMethod(method), location));
     }
 
     public static void SuspendThread(Thread thread) throws JVMTIException {
-        checkScope();
         checkError(Native.INSTANCE.SuspendThread(JVMTI_ENV, thread));
     }
 
     public static void ResumeThread(Thread thread) throws JVMTIException {
-        checkScope();
         checkError(Native.INSTANCE.ResumeThread(JVMTI_ENV, thread));
     }
 
     public static void StopThread(Thread thread) throws JVMTIException {
-        checkScope();
         checkError(Native.INSTANCE.StopThread(JVMTI_ENV, thread));
     }
 
     public static void InterruptThread(Thread thread) throws JVMTIException {
-        checkScope();
         checkError(Native.INSTANCE.InterruptThread(JVMTI_ENV, thread));
     }
 
@@ -950,43 +929,36 @@ public final class JVMTI {
     }
 
     public static void ForceEarlyReturnObject(Thread thread, Object value) {
-        checkScope();
         if (isCurrent(thread)) throw UCT("ForceEarlyReturnObject");
         checkError(Native.INSTANCE.ForceEarlyReturnObject(JVMTI_ENV, thread, value));
     }
 
     public static void ForceEarlyReturnInt(Thread thread, int value) {
-        checkScope();
         if (isCurrent(thread)) throw UCT("ForceEarlyReturnInt");
         checkError(Native.INSTANCE.ForceEarlyReturnInt(JVMTI_ENV, thread, value));
     }
 
     public static void ForceEarlyReturnLong(Thread thread, long value) {
-        checkScope();
         if (isCurrent(thread)) throw UCT("ForceEarlyReturnLong");
         checkError(Native.INSTANCE.ForceEarlyReturnLong(JVMTI_ENV, thread, value));
     }
 
     public static void ForceEarlyReturnFloat(Thread thread, float value) {
-        checkScope();
         if (isCurrent(thread)) throw UCT("ForceEarlyReturnFloat");
         checkError(Native.INSTANCE.ForceEarlyReturnFloat(JVMTI_ENV, thread, value));
     }
 
     public static void ForceEarlyReturnDouble(Thread thread, double value) {
-        checkScope();
         if (isCurrent(thread)) throw UCT("ForceEarlyReturnDouble");
         checkError(Native.INSTANCE.ForceEarlyReturnDouble(JVMTI_ENV, thread, value));
     }
 
     public static void ForceEarlyReturnVoid(Thread thread) {
-        checkScope();
         if (isCurrent(thread)) throw UCT("ForceEarlyReturnVoid");
         checkError(Native.INSTANCE.ForceEarlyReturnVoid(JVMTI_ENV, thread));
     }
 
     public static void PopFrame(Thread thread) {
-        checkScope();
         if (isCurrent(thread)) throw UCT("PopFrame");
         checkError(Native.INSTANCE.PopFrame(JVMTI_ENV, thread));
     }
@@ -994,7 +966,6 @@ public final class JVMTI {
     private static final int STUB_DEPTH = 3;
 
     public static int GetFrameCount(Thread thread) {
-        checkScope();
         int out;
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment count_ptr = scope.allocate(JAVA_INT);
@@ -1006,7 +977,6 @@ public final class JVMTI {
     }
 
     public static Object GetLocalInstance(Thread thread, int depth) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             // Note: value is word, but long is allocated, which may be bigger than necessary
@@ -1021,7 +991,6 @@ public final class JVMTI {
     }
 
     public static Object GetLocalObject(Thread thread, int depth, int slot) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             // Note: value is word, but long is allocated, which may be bigger than necessary
@@ -1036,7 +1005,6 @@ public final class JVMTI {
     }
 
     public static int GetLocalInt(Thread thread, int depth, int slot) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment value_ptr = scope.allocate(JAVA_INT);
@@ -1047,7 +1015,6 @@ public final class JVMTI {
     }
 
     public static long GetLocalLong(Thread thread, int depth, int slot) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment value_ptr = scope.allocate(JAVA_LONG);
@@ -1058,7 +1025,6 @@ public final class JVMTI {
     }
 
     public static float GetLocalFloat(Thread thread, int depth, int slot) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment value_ptr = scope.allocate(JAVA_FLOAT);
@@ -1069,7 +1035,6 @@ public final class JVMTI {
     }
 
     public static double GetLocalDouble(Thread thread, int depth, int slot) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         try (Arena scope = Arena.ofConfined()) {
             MemorySegment value_ptr = scope.allocate(JAVA_DOUBLE);
@@ -1080,31 +1045,26 @@ public final class JVMTI {
     }
 
     public static void SetLocalObject(Thread thread, int depth, int slot, Object value) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         checkError(Native.INSTANCE.SetLocalObject(JVMTI_ENV, thread, depth, slot, value));
     }
 
     public static void SetLocalInt(Thread thread, int depth, int slot, int value) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         checkError(Native.INSTANCE.SetLocalInt(JVMTI_ENV, thread, depth, slot, value));
     }
 
     public static void SetLocalLong(Thread thread, int depth, int slot, long value) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         checkError(Native.INSTANCE.SetLocalLong(JVMTI_ENV, thread, depth, slot, value));
     }
 
     public static void SetLocalFloat(Thread thread, int depth, int slot, float value) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         checkError(Native.INSTANCE.SetLocalFloat(JVMTI_ENV, thread, depth, slot, value));
     }
 
     public static void SetLocalDouble(Thread thread, int depth, int slot, double value) {
-        checkScope();
         depth = isCurrent(thread) ? depth + STUB_DEPTH : depth;
         checkError(Native.INSTANCE.SetLocalDouble(JVMTI_ENV, thread, depth, slot, value));
     }

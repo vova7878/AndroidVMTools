@@ -143,8 +143,8 @@ public class TIHooks {
             default -> {
                 if (!value.startsWith("[")) {
                     value = value.substring(1, value.length() - 1);
-                    value = value.replace('/', '.');
                 }
+                value = value.replace('/', '.');
                 try {
                     yield Class.forName(value, false, loader);
                 } catch (ClassNotFoundException e) {

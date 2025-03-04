@@ -13,6 +13,7 @@ import static com.v7878.unsafe.Reflection.getArtMethod;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 import static com.v7878.unsafe.Reflection.unreflect;
+import static com.v7878.vmtools._Utils.rawMethodTypeOf;
 
 import com.v7878.dex.DexIO;
 import com.v7878.dex.builder.ClassBuilder;
@@ -39,12 +40,9 @@ import com.v7878.vmtools.Runtime.DebugState;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 
 public class Hooks {
@@ -280,24 +278,6 @@ public class Hooks {
         return hooker_method;
     }
 
-    private static MethodType methodTypeOf(Executable ex) {
-        Class<?> ret;
-        List<Class<?>> args = new ArrayList<>();
-        if (ex instanceof Method m) {
-            ret = m.getReturnType();
-            if (!Modifier.isStatic(m.getModifiers())) {
-                args.add(m.getDeclaringClass());
-            }
-            args.addAll(List.of(m.getParameterTypes()));
-        } else {
-            assert ex instanceof Constructor<?>;
-            ret = void.class;
-            args.add(ex.getDeclaringClass());
-            args.addAll(List.of(ex.getParameterTypes()));
-        }
-        return MethodType.methodType(ret, args);
-    }
-
     /**
      * target -> hooker
      * original (parameter of transformer) -> target
@@ -307,7 +287,7 @@ public class Hooks {
         Objects.requireNonNull(target);
         Objects.requireNonNull(hooker);
 
-        var invoker = initInvoker(methodTypeOf(target), hooker);
+        var invoker = initInvoker(rawMethodTypeOf(target), hooker);
         SunCleaner.systemCleaner().register(target.getDeclaringClass(), () -> Utils.reachabilityFence(invoker));
         hookSwap(target, target_type, invoker, hooker_type);
     }

@@ -6,15 +6,22 @@ import static com.v7878.dex.DexConstants.ACC_NATIVE;
 import static com.v7878.dex.DexConstants.ACC_PUBLIC;
 import static com.v7878.dex.DexConstants.ACC_STATIC;
 import static com.v7878.dex.builder.CodeBuilder.Op.GET_OBJECT;
+import static com.v7878.foreign.MemoryLayout.PathElement.groupElement;
+import static com.v7878.unsafe.AndroidUnsafe.IS64BIT;
+import static com.v7878.unsafe.ArtMethodUtils.ARTMETHOD_LAYOUT;
 import static com.v7878.unsafe.ArtModifiers.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtModifiers.kAccPreCompiled;
 import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
 import static com.v7878.unsafe.DexFileUtils.openDexFile;
 import static com.v7878.unsafe.Reflection.fieldOffset;
+import static com.v7878.unsafe.Reflection.getArtMethod;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 import static com.v7878.unsafe.Reflection.getDeclaredMethods;
+import static com.v7878.unsafe.Reflection.getHiddenInstanceField;
+import static com.v7878.unsafe.Reflection.getHiddenVirtualMethod;
 import static com.v7878.unsafe.Reflection.unreflect;
+import static com.v7878.unsafe.Utils.shouldNotHappen;
 import static com.v7878.unsafe.Utils.unsupportedSDK;
 import static com.v7878.vmtools._Utils.rawMethodTypeOf;
 
@@ -41,12 +48,15 @@ import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
 import com.v7878.unsafe.ClassUtils.ClassStatus;
 import com.v7878.unsafe.DexFileUtils;
+import com.v7878.unsafe.Reflection;
+import com.v7878.unsafe.VM;
 import com.v7878.unsafe.invoke.Transformers;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -118,44 +128,97 @@ public class TIHooks {
         default -> throw unsupportedSDK(ART_SDK_INT);
     };
 
+    private static Class<?> resolveClass(ClassLoader loader, TypeId type) {
+        var value = type.getDescriptor();
+        return switch (value) {
+            case "V" -> void.class;
+            case "Z" -> boolean.class;
+            case "B" -> byte.class;
+            case "S" -> short.class;
+            case "C" -> char.class;
+            case "I" -> int.class;
+            case "F" -> float.class;
+            case "J" -> long.class;
+            case "D" -> double.class;
+            default -> {
+                if (!value.startsWith("[")) {
+                    value = value.substring(1, value.length() - 1);
+                    value = value.replace('/', '.');
+                }
+                try {
+                    yield Class.forName(value, false, loader);
+                } catch (ClassNotFoundException e) {
+                    throw shouldNotHappen(e);
+                }
+            }
+        };
+    }
+
+    private static MethodId resolveSuperMethod(ClassLoader loader, MethodId mid) {
+        // TODO: move to ArtMethodUtils
+        class Holder {
+            static final long index_offset = ARTMETHOD_LAYOUT
+                    .byteOffset(groupElement("method_index_"));
+            static final long vtable_offset = fieldOffset(
+                    getHiddenInstanceField(Class.class, "vtable"));
+
+            static int getVTableIndex(Method method) {
+                return AndroidUnsafe.getShortN(
+                        getArtMethod(method) + index_offset) & 0xffff;
+            }
+
+            static long getVTableEntry(Class<?> clazz, int index) {
+                if (VM.shouldHaveEmbeddedVTableAndImt(clazz)) {
+                    return VM.getEmbeddedVTableEntry(clazz, index);
+                }
+                var vtable_array = AndroidUnsafe.getObject(clazz, vtable_offset);
+                return IS64BIT ? ((long[]) vtable_array)[index] :
+                        ((int[]) vtable_array)[index] & 0xffffffffL;
+            }
+        }
+        // TODO: return unchanged if can`t resolve
+        var declaring_class = resolveClass(loader, mid.getDeclaringClass());
+        var args = mid.getParameterTypes().stream()
+                .map(type -> resolveClass(loader, type))
+                .toArray(Class[]::new);
+        var method = getHiddenVirtualMethod(declaring_class, mid.getName(), args);
+        int vtable_index = Holder.getVTableIndex(method);
+        var super_art_method = Holder.getVTableEntry(declaring_class.getSuperclass(), vtable_index);
+        var super_method = Reflection.toExecutable(super_art_method);
+        return MethodId.of(super_method);
+    }
+
     private static MethodImplementation fixSuperOpcodes(
-            MethodImplementation impl, Class<?> declaring_class) {
-        var declaring_class_id = TypeId.of(declaring_class);
-        // TODO: What if the method is on the superclass above?
-        var super_class_id = TypeId.of(declaring_class.getSuperclass());
+            MethodImplementation impl, ClassLoader loader) {
         var insns = new ArrayList<Instruction>(impl.getInstructions().size());
         boolean modified = false;
         for (var insn : impl.getInstructions()) {
             if (insn.getOpcode() == Opcode.INVOKE_SUPER) {
                 var tmp = (Instruction35c35mi35ms) insn;
                 var mid = (MethodId) tmp.getReference1();
-                if (declaring_class_id.equals(mid.getDeclaringClass())) {
-                    mid = MethodId.of(super_class_id, mid.getName(), mid.getProto());
-                    insn = Instruction35c35mi35ms.of(
-                            Opcode.INVOKE_DIRECT,
-                            tmp.getRegisterCount(),
-                            tmp.getRegister1(),
-                            tmp.getRegister2(),
-                            tmp.getRegister3(),
-                            tmp.getRegister4(),
-                            tmp.getRegister5(),
-                            mid
-                    );
-                    modified = true;
-                }
+                mid = resolveSuperMethod(loader, mid);
+                insn = Instruction35c35mi35ms.of(
+                        Opcode.INVOKE_DIRECT,
+                        tmp.getRegisterCount(),
+                        tmp.getRegister1(),
+                        tmp.getRegister2(),
+                        tmp.getRegister3(),
+                        tmp.getRegister4(),
+                        tmp.getRegister5(),
+                        mid
+                );
+                modified = true;
             } else if (insn.getOpcode() == Opcode.INVOKE_SUPER_RANGE) {
                 var tmp = (Instruction3rc3rmi3rms) insn;
                 var mid = (MethodId) tmp.getReference1();
-                if (declaring_class_id.equals(mid.getDeclaringClass())) {
-                    mid = MethodId.of(super_class_id, mid.getName(), mid.getProto());
-                    insn = Instruction3rc3rmi3rms.of(
-                            Opcode.INVOKE_DIRECT,
-                            tmp.getRegisterCount(),
-                            tmp.getStartRegister(),
-                            mid
-                    );
-                    modified = true;
-                }
+                mid = resolveSuperMethod(loader, mid);
+                insn = Instruction3rc3rmi3rms.of(
+                        Opcode.INVOKE_DIRECT,
+                        tmp.getRegisterCount(),
+                        tmp.getStartRegister(),
+                        mid
+                );
+                modified = true;
             }
             insns.add(insn);
         }
@@ -231,7 +294,7 @@ public class TIHooks {
                             .withName(executable.methodName())
                             .withProto(executable.static_proto)
                             // TODO: How will the invoke-super instruction behave here?
-                            .withCode(fixSuperOpcodes(edef.getImplementation(), request.clazz))
+                            .withCode(fixSuperOpcodes(edef.getImplementation(), loader))
                     );
                 }
             }

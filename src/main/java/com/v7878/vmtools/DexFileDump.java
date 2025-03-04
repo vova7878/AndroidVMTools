@@ -1,6 +1,17 @@
 package com.v7878.vmtools;
 
 import static com.v7878.dex.DexConstants.NO_INDEX;
+import static com.v7878.dex.DexOffsets.CHECKSUM_DATA_START_OFFSET;
+import static com.v7878.dex.DexOffsets.CHECKSUM_OFFSET;
+import static com.v7878.dex.DexOffsets.CONTAINER_OFF_OFFSET;
+import static com.v7878.dex.DexOffsets.DATA_SIZE_OFFSET;
+import static com.v7878.dex.DexOffsets.DATA_START_OFFSET;
+import static com.v7878.dex.DexOffsets.ENDIAN_TAG_OFFSET;
+import static com.v7878.dex.DexOffsets.FILE_SIZE_OFFSET;
+import static com.v7878.dex.DexOffsets.HEADER_SIZE_OFFSET;
+import static com.v7878.dex.DexOffsets.SIGNATURE_DATA_START_OFFSET;
+import static com.v7878.dex.DexOffsets.SIGNATURE_OFFSET;
+import static com.v7878.dex.DexOffsets.SIGNATURE_SIZE;
 import static com.v7878.foreign.MemoryLayout.PathElement.groupElement;
 import static com.v7878.foreign.ValueLayout.JAVA_BYTE;
 import static com.v7878.unsafe.AndroidUnsafe.getBooleanN;
@@ -37,28 +48,6 @@ public final class DexFileDump {
     }
 
     private static final int VERSION_OFFSET = 4;
-    private static final int CHECKSUM_OFFSET = 8;
-
-    // this is the start of the checksumed data
-    private static final int CHECKSUM_DATA_START_OFFSET = 12;
-
-    private static final int SIGNATURE_OFFSET = 12;
-    private static final int SIGNATURE_SIZE = 20;
-
-    // this is the start of the sha-1 hashed data
-    private static final int SIGNATURE_DATA_START_OFFSET = 32;
-
-    private static final int FILE_SIZE_OFFSET = 32;
-
-    private static final int HEADER_SIZE_OFFSET = 36;
-
-    private static final int ENDIAN_TAG_OFFSET = 40;
-
-    private static final int DATA_SIZE_OFFSET = 104;
-    private static final int DATA_START_OFFSET = 108;
-
-    //private static final int CONTAINER_SIZE_OFFSET = 112;
-    private static final int CONTAINER_OFF_OFFSET = 116;
 
     public static long getDexFileHeader(long dexfile_struct) {
         class Holder {

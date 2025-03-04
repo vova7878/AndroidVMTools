@@ -180,7 +180,7 @@ public class TIHooks {
         // TODO: return unchanged if can`t resolve
         var declaring_class = resolveClass(loader, mid.getDeclaringClass());
         if (declaring_class.isInterface()) {
-            return mid;
+            return null;
         }
         var args = mid.getParameterTypes().stream()
                 .map(type -> resolveClass(loader, type))
@@ -201,28 +201,32 @@ public class TIHooks {
                 var tmp = (Instruction35c35mi35ms) insn;
                 var mid = (MethodId) tmp.getReference1();
                 mid = resolveSuperMethod(caller_class, mid);
-                insn = Instruction35c35mi35ms.of(
-                        Opcode.INVOKE_DIRECT,
-                        tmp.getRegisterCount(),
-                        tmp.getRegister1(),
-                        tmp.getRegister2(),
-                        tmp.getRegister3(),
-                        tmp.getRegister4(),
-                        tmp.getRegister5(),
-                        mid
-                );
-                modified = true;
+                if (mid != null) {
+                    insn = Instruction35c35mi35ms.of(
+                            Opcode.INVOKE_DIRECT,
+                            tmp.getRegisterCount(),
+                            tmp.getRegister1(),
+                            tmp.getRegister2(),
+                            tmp.getRegister3(),
+                            tmp.getRegister4(),
+                            tmp.getRegister5(),
+                            mid
+                    );
+                    modified = true;
+                }
             } else if (insn.getOpcode() == Opcode.INVOKE_SUPER_RANGE) {
                 var tmp = (Instruction3rc3rmi3rms) insn;
                 var mid = (MethodId) tmp.getReference1();
                 mid = resolveSuperMethod(caller_class, mid);
-                insn = Instruction3rc3rmi3rms.of(
-                        Opcode.INVOKE_DIRECT,
-                        tmp.getRegisterCount(),
-                        tmp.getStartRegister(),
-                        mid
-                );
-                modified = true;
+                if (mid != null) {
+                    insn = Instruction3rc3rmi3rms.of(
+                            Opcode.INVOKE_DIRECT,
+                            tmp.getRegisterCount(),
+                            tmp.getStartRegister(),
+                            mid
+                    );
+                    modified = true;
+                }
             }
             insns.add(insn);
         }

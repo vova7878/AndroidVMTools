@@ -1,6 +1,5 @@
 package com.v7878.vmtools;
 
-import static com.v7878.Utils.generateClassName;
 import static com.v7878.dex.DexConstants.ACC_FINAL;
 import static com.v7878.dex.DexConstants.ACC_PRIVATE;
 import static com.v7878.dex.DexConstants.ACC_PUBLIC;
@@ -16,12 +15,13 @@ import static com.v7878.unsafe.DexFileUtils.loadClass;
 import static com.v7878.unsafe.DexFileUtils.openDexFile;
 import static com.v7878.unsafe.DexFileUtils.setTrusted;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
-import static com.v7878.unsafe.Reflection.getDeclaredVirtualMethods;
+import static com.v7878.unsafe.Reflection.getHiddenVirtualMethods;
 import static com.v7878.unsafe.Utils.check;
 import static com.v7878.unsafe.Utils.nothrows_run;
 import static com.v7878.unsafe.Utils.searchMethod;
 import static com.v7878.unsafe.VM.objectSizeField;
 import static com.v7878.unsafe.VM.setObjectClass;
+import static com.v7878.vmtools._Utils.generateClassName;
 
 import com.v7878.dex.DexIO;
 import com.v7878.dex.builder.ClassBuilder;
@@ -78,7 +78,7 @@ public class ClassLoaderHooks {
     @SuppressWarnings("SameParameterValue")
     private static Method findMethod(Class<?> clazz, String name, Class<?>... args) {
         while (clazz != null) {
-            var method = searchMethod(getDeclaredVirtualMethods(clazz), name, false, args);
+            var method = searchMethod(getHiddenVirtualMethods(clazz), name, false, args);
             if (method != null) return method;
             clazz = clazz.getSuperclass();
         }

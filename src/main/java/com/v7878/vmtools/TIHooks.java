@@ -154,7 +154,7 @@ public class TIHooks {
         };
     }
 
-    private static MethodId resolveSuperMethod(ClassLoader loader, MethodId mid) {
+    private static MethodId resolveSuperMethod(Class<?> caller_class, MethodId mid) {
         // TODO: move to ArtMethodUtils
         class Holder {
             static final long index_offset = ARTMETHOD_LAYOUT
@@ -176,27 +176,31 @@ public class TIHooks {
                         ((int[]) vtable_array)[index] & 0xffffffffL;
             }
         }
+        ClassLoader loader = caller_class.getClassLoader();
         // TODO: return unchanged if can`t resolve
         var declaring_class = resolveClass(loader, mid.getDeclaringClass());
+        if (declaring_class.isInterface()) {
+            return mid;
+        }
         var args = mid.getParameterTypes().stream()
                 .map(type -> resolveClass(loader, type))
                 .toArray(Class[]::new);
-        var method = getHiddenVirtualMethod(declaring_class, mid.getName(), args);
+        var method = getHiddenVirtualMethod(caller_class, mid.getName(), args);
         int vtable_index = Holder.getVTableIndex(method);
-        var super_art_method = Holder.getVTableEntry(declaring_class, vtable_index);
+        var super_art_method = Holder.getVTableEntry(caller_class.getSuperclass(), vtable_index);
         var super_method = Reflection.toExecutable(super_art_method);
         return MethodId.of(super_method);
     }
 
     private static MethodImplementation fixSuperOpcodes(
-            MethodImplementation impl, ClassLoader loader) {
+            MethodImplementation impl, Class<?> caller_class) {
         var insns = new ArrayList<Instruction>(impl.getInstructions().size());
         boolean modified = false;
         for (var insn : impl.getInstructions()) {
             if (insn.getOpcode() == Opcode.INVOKE_SUPER) {
                 var tmp = (Instruction35c35mi35ms) insn;
                 var mid = (MethodId) tmp.getReference1();
-                mid = resolveSuperMethod(loader, mid);
+                mid = resolveSuperMethod(caller_class, mid);
                 insn = Instruction35c35mi35ms.of(
                         Opcode.INVOKE_DIRECT,
                         tmp.getRegisterCount(),
@@ -211,7 +215,7 @@ public class TIHooks {
             } else if (insn.getOpcode() == Opcode.INVOKE_SUPER_RANGE) {
                 var tmp = (Instruction3rc3rmi3rms) insn;
                 var mid = (MethodId) tmp.getReference1();
-                mid = resolveSuperMethod(loader, mid);
+                mid = resolveSuperMethod(caller_class, mid);
                 insn = Instruction3rc3rmi3rms.of(
                         Opcode.INVOKE_DIRECT,
                         tmp.getRegisterCount(),
@@ -294,7 +298,7 @@ public class TIHooks {
                             .withName(executable.methodName())
                             .withProto(executable.static_proto)
                             // TODO: How will the invoke-super instruction behave here?
-                            .withCode(fixSuperOpcodes(edef.getImplementation(), loader))
+                            .withCode(fixSuperOpcodes(edef.getImplementation(), request.clazz))
                     );
                 }
             }

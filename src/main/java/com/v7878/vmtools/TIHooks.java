@@ -183,7 +183,7 @@ public class TIHooks {
                 .toArray(Class[]::new);
         var method = getHiddenVirtualMethod(declaring_class, mid.getName(), args);
         int vtable_index = Holder.getVTableIndex(method);
-        var super_art_method = Holder.getVTableEntry(declaring_class.getSuperclass(), vtable_index);
+        var super_art_method = Holder.getVTableEntry(declaring_class, vtable_index);
         var super_method = Reflection.toExecutable(super_art_method);
         return MethodId.of(super_method);
     }

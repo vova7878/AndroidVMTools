@@ -21,14 +21,19 @@ import static com.v7878.vmtools._Utils.rawMethodTypeOf;
 import android.util.Pair;
 
 import com.v7878.dex.DexIO;
+import com.v7878.dex.Opcode;
 import com.v7878.dex.builder.ClassBuilder;
 import com.v7878.dex.immutable.ClassDef;
 import com.v7878.dex.immutable.Dex;
 import com.v7878.dex.immutable.FieldId;
 import com.v7878.dex.immutable.MethodDef;
 import com.v7878.dex.immutable.MethodId;
+import com.v7878.dex.immutable.MethodImplementation;
 import com.v7878.dex.immutable.ProtoId;
 import com.v7878.dex.immutable.TypeId;
+import com.v7878.dex.immutable.bytecode.Instruction;
+import com.v7878.dex.immutable.bytecode.Instruction35c35mi35ms;
+import com.v7878.dex.immutable.bytecode.Instruction3rc3rmi3rms;
 import com.v7878.ti.JVMTI;
 import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.ApiSensitive;
@@ -113,6 +118,54 @@ public class TIHooks {
         default -> throw unsupportedSDK(ART_SDK_INT);
     };
 
+    private static MethodImplementation fixSuperOpcodes(
+            MethodImplementation impl, Class<?> declaring_class) {
+        var declaring_class_id = TypeId.of(declaring_class);
+        // TODO: What if the method is on the superclass above?
+        var super_class_id = TypeId.of(declaring_class.getSuperclass());
+        var insns = new ArrayList<Instruction>(impl.getInstructions().size());
+        boolean modified = false;
+        for (var insn : impl.getInstructions()) {
+            if (insn.getOpcode() == Opcode.INVOKE_SUPER) {
+                var tmp = (Instruction35c35mi35ms) insn;
+                var mid = (MethodId) tmp.getReference1();
+                if (declaring_class_id.equals(mid.getDeclaringClass())) {
+                    mid = MethodId.of(super_class_id, mid.getName(), mid.getProto());
+                    insn = Instruction35c35mi35ms.of(
+                            Opcode.INVOKE_DIRECT,
+                            tmp.getRegisterCount(),
+                            tmp.getRegister1(),
+                            tmp.getRegister2(),
+                            tmp.getRegister3(),
+                            tmp.getRegister4(),
+                            tmp.getRegister5(),
+                            mid
+                    );
+                    modified = true;
+                }
+            } else if (insn.getOpcode() == Opcode.INVOKE_SUPER_RANGE) {
+                var tmp = (Instruction3rc3rmi3rms) insn;
+                var mid = (MethodId) tmp.getReference1();
+                if (declaring_class_id.equals(mid.getDeclaringClass())) {
+                    mid = MethodId.of(super_class_id, mid.getName(), mid.getProto());
+                    insn = Instruction3rc3rmi3rms.of(
+                            Opcode.INVOKE_DIRECT,
+                            tmp.getRegisterCount(),
+                            tmp.getStartRegister(),
+                            mid
+                    );
+                    modified = true;
+                }
+            }
+            insns.add(insn);
+        }
+        if (modified) {
+            return MethodImplementation.of(impl.getRegisterCount(),
+                    insns, impl.getTryBlocks(), impl.getDebugItems());
+        }
+        return impl;
+    }
+
     public static void hook(Map<Executable, HookTransformer> hooks) {
         if (hooks.size() == 0) return;
         var requests = new HashMap<ClassLoader, Map<Class<?>, ClassRedefinitionRequest>>();
@@ -178,7 +231,7 @@ public class TIHooks {
                             .withName(executable.methodName())
                             .withProto(executable.static_proto)
                             // TODO: How will the invoke-super instruction behave here?
-                            .withCode(edef.getImplementation())
+                            .withCode(fixSuperOpcodes(edef.getImplementation(), request.clazz))
                     );
                 }
             }

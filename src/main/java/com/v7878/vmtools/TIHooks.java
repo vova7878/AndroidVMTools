@@ -160,6 +160,7 @@ public class TIHooks {
             var backup_builder = ClassBuilder.newInstance();
             backup_builder.withFlags(ACC_PUBLIC | ACC_FINAL);
             backup_builder.withType(backup_id);
+            backup_builder.withSuperClass(TypeId.OBJECT);
             for (var request_entry : loader_entry.getValue().entrySet()) {
                 var request = request_entry.getValue();
                 request.setBackup(backup_id);

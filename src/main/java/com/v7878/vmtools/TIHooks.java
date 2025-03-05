@@ -132,6 +132,8 @@ public class TIHooks {
 
             var clazz = executable.getDeclaringClass();
             var loader = clazz.getClassLoader();
+            loader = (loader == null || loader == Object.class.getClassLoader()) ?
+                    ClassLoader.getSystemClassLoader() : loader;
             var requests_map = requests.computeIfAbsent(loader, unused -> new HashMap<>());
             var request = requests_map.computeIfAbsent(clazz, ClassRedefinitionRequest::new);
             request.executables.add(new ExecutableRedefinitionRequest(
@@ -163,9 +165,12 @@ public class TIHooks {
                 var backup_builder = ClassBuilder.newInstance();
                 backup_builder.withFlags(ACC_PUBLIC | ACC_FINAL);
                 backup_builder.withType(backup_id);
-                ClassUtils.makeClassPublic(request.clazz.getSuperclass());
-                // Required for invoke-super instruction to work correctly
-                backup_builder.withSuperClass(TypeId.of(request.clazz.getSuperclass()));
+                var superclass = request.clazz.getSuperclass();
+                if (superclass != null) {
+                    ClassUtils.makeClassPublic(superclass);
+                    // Required for invoke-super instruction to work correctly
+                    backup_builder.withSuperClass(TypeId.of(superclass));
+                }
                 for (var executable : request.executables) {
                     var edef = executable.def;
                     assert (edef.getAccessFlags() & (ACC_NATIVE | ACC_ABSTRACT)) == 0;

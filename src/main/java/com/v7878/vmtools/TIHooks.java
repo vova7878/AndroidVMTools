@@ -158,6 +158,7 @@ public class TIHooks {
 
                 var backup_name = _Utils.generateClassName(loader, "HookBackup");
                 var backup_id = TypeId.ofName(backup_name);
+                request.setBackup(backup_id);
 
                 var backup_builder = ClassBuilder.newInstance();
                 backup_builder.withFlags(ACC_PUBLIC | ACC_FINAL);

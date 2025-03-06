@@ -47,6 +47,9 @@ import java.util.List;
 import java.util.Map;
 
 public class TIHooks {
+    private static final ClassLoader BOOT_CLASS_LOADER =
+            ClassLoader.getSystemClassLoader().getParent();
+
     private static class ExecutableRedefinitionRequest {
         final Executable executable;
         final HookTransformer hooker;
@@ -132,8 +135,6 @@ public class TIHooks {
 
             var clazz = executable.getDeclaringClass();
             var loader = clazz.getClassLoader();
-            loader = (loader == null || loader == Object.class.getClassLoader()) ?
-                    ClassLoader.getSystemClassLoader() : loader;
             var requests_map = requests.computeIfAbsent(loader, unused -> new HashMap<>());
             var request = requests_map.computeIfAbsent(clazz, ClassRedefinitionRequest::new);
             request.executables.add(new ExecutableRedefinitionRequest(
@@ -166,7 +167,10 @@ public class TIHooks {
                 backup_builder.withFlags(ACC_PUBLIC | ACC_FINAL);
                 backup_builder.withType(backup_id);
                 var superclass = request.clazz.getSuperclass();
-                if (superclass != null) {
+                if (superclass == null) {
+                    // We hook java.lang.Object which has no superclass
+                    backup_builder.withSuperClass(TypeId.OBJECT);
+                } else {
                     ClassUtils.makeClassPublic(superclass);
                     // Required for invoke-super instruction to work correctly
                     backup_builder.withSuperClass(TypeId.of(superclass));
@@ -192,6 +196,10 @@ public class TIHooks {
                 var dexfile = openDexFile(DexIO.write(Dex.of(backup_def)));
                 DexFileUtils.setTrusted(dexfile);
 
+                if (loader == BOOT_CLASS_LOADER) {
+                    // TODO: move this check to DexFileUtils.loadClass
+                    loader = null;
+                }
                 var backup = DexFileUtils.loadClass(dexfile, backup_name, loader);
                 ClassUtils.setClassStatus(backup, ClassStatus.Verified);
 

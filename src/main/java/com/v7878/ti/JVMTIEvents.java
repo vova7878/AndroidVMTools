@@ -5,7 +5,7 @@ import static com.v7878.foreign.Linker.Option.allowExceptions;
 import static com.v7878.foreign.MemoryLayout.PathElement.groupElement;
 import static com.v7878.foreign.MemoryLayout.structLayout;
 import static com.v7878.foreign.ValueLayout.ADDRESS;
-import static com.v7878.foreign.ValueLayout.JAVA_LONG;
+import static com.v7878.foreign.ValueLayout.JAVA_BOOLEAN;
 import static com.v7878.ti.JVMTI.JVMTI_SCOPE;
 import static com.v7878.ti.JVMTIConstants.JVMTI_DISABLE;
 import static com.v7878.ti.JVMTIConstants.JVMTI_ENABLE;
@@ -14,7 +14,12 @@ import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_CLASS_LOAD;
 import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_CLASS_PREPARE;
 import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_GARBAGE_COLLECTION_FINISH;
 import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_GARBAGE_COLLECTION_START;
+import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_MONITOR_CONTENDED_ENTER;
+import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_MONITOR_CONTENDED_ENTERED;
+import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_MONITOR_WAIT;
+import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_MONITOR_WAITED;
 import static com.v7878.unsafe.AndroidUnsafe.IS64BIT;
+import static com.v7878.unsafe.cpp_std.CLayouts.C_LONG;
 import static com.v7878.unsafe.foreign.ExtraLayouts.WORD;
 
 import com.v7878.foreign.FunctionDescriptor;
@@ -49,6 +54,26 @@ public class JVMTIEvents {
     @FunctionalInterface
     public interface ClassPrepareCallback {
         void invoke(Thread thread, Class<?> klass);
+    }
+
+    @FunctionalInterface
+    public interface MonitorContendedEnterCallback {
+        void invoke(Thread thread, Object object);
+    }
+
+    @FunctionalInterface
+    public interface MonitorContendedEnteredCallback {
+        void invoke(Thread thread, Object object);
+    }
+
+    @FunctionalInterface
+    public interface MonitorWaitCallback {
+        void invoke(Thread thread, Object object, long timeout);
+    }
+
+    @FunctionalInterface
+    public interface MonitorWaitedCallback {
+        void invoke(Thread thread, Object object, boolean timed_out);
     }
 
     // TODO
@@ -117,28 +142,6 @@ public class JVMTIEvents {
     //     jmethodID method,
     //     jboolean was_popped_by_exception,
     //     jvalue return_value);
-    //typedef void (JNICALL *jvmtiEventMonitorContendedEnter)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env,
-    //     jthread thread,
-    //     jobject object);
-    //typedef void (JNICALL *jvmtiEventMonitorContendedEntered)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env,
-    //     jthread thread,
-    //     jobject object);
-    //typedef void (JNICALL *jvmtiEventMonitorWait)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env,
-    //     jthread thread,
-    //     jobject object,
-    //     jlong timeout);
-    //typedef void (JNICALL *jvmtiEventMonitorWaited)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env,
-    //     jthread thread,
-    //     jobject object,
-    //     jboolean timed_out);
     //typedef void (JNICALL *jvmtiEventNativeMethodBind)
     //    (jvmtiEnv *jvmti_env,
     //     JNIEnv* jni_env,
@@ -215,6 +218,10 @@ public class JVMTIEvents {
     private static final long CALLBACKS_ADDRESS = CALLBACKS.nativeAddress();
     private static final int CALLBACKS_SIZE = Math.toIntExact(CALLBACKS.byteSize());
 
+    private static void updateCallbacks() {
+        JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
+    }
+
     private static long callbackOffset(String name) {
         return JVMTI_EVENT_CALLBACKS_LAYOUT.byteOffset(groupElement(name));
     }
@@ -223,13 +230,13 @@ public class JVMTIEvents {
         return IS64BIT ? accessor.getLong(index) : accessor.getInt(index) & 0xffffffffL;
     }
 
-    // (jvmtiEnv*, JNIEnv*, jthread, jmethodID, jlocation) -> void
     public static void setBreakpointCallback(BreakpointCallback callback, Thread event_thread) {
         class Holder {
             static volatile BreakpointCallback java_callback;
             static final long OFFSET = callbackOffset("Breakpoint");
+            // (jvmtiEnv*, JNIEnv*, jthread, jmethodID, jlocation) -> void
             static final FunctionDescriptor DESCRIPTOR =
-                    FunctionDescriptor.ofVoid(WORD, WORD, WORD, JAVA_LONG);
+                    FunctionDescriptor.ofVoid(WORD, WORD, WORD, C_LONG);
             static final MethodHandle HANDLE = Transformers.makeTransformer(
                     DESCRIPTOR.toMethodType(), new AbstractTransformer() {
                         @Override
@@ -251,19 +258,19 @@ public class JVMTIEvents {
         Holder.java_callback = callback;
         CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
                 MemorySegment.NULL : Holder.native_callback);
-        JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
+        updateCallbacks();
     }
 
     public static void setBreakpointCallback(BreakpointCallback callback) {
         setBreakpointCallback(callback, null);
     }
 
-    // (jvmtiEnv *jvmti_env) -> void
     public static void setGarbageCollectionCallback(GarbageCollectionCallback callback, Thread event_thread) {
         class Holder {
             static volatile GarbageCollectionCallback java_callback;
             static final long START_OFFSET = callbackOffset("GarbageCollectionStart");
             static final long FINISH_OFFSET = callbackOffset("GarbageCollectionFinish");
+            // (jvmtiEnv *jvmti_env) -> void
             static final FunctionDescriptor DESCRIPTOR = FunctionDescriptor.ofVoid(WORD);
 
             static class Handle extends AbstractTransformer {
@@ -299,18 +306,18 @@ public class JVMTIEvents {
                 MemorySegment.NULL : Holder.start_native_callback);
         CALLBACKS.set(ADDRESS, Holder.FINISH_OFFSET, callback == null ?
                 MemorySegment.NULL : Holder.finish_native_callback);
-        JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
+        updateCallbacks();
     }
 
     public static void setGarbageCollectionCallback(GarbageCollectionCallback callback) {
         setGarbageCollectionCallback(callback, null);
     }
 
-    // (jvmtiEnv*, JNIEnv*, jthread, jclass) -> void
     public static void setClassLoadCallback(ClassLoadCallback callback, Thread event_thread) {
         class Holder {
             static volatile ClassLoadCallback java_callback;
             static final long OFFSET = callbackOffset("ClassLoad");
+            // (jvmtiEnv*, JNIEnv*, jthread, jclass) -> void
             static final FunctionDescriptor DESCRIPTOR =
                     FunctionDescriptor.ofVoid(WORD, WORD, WORD);
             static final MethodHandle HANDLE = Transformers.makeTransformer(
@@ -333,18 +340,18 @@ public class JVMTIEvents {
         Holder.java_callback = callback;
         CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
                 MemorySegment.NULL : Holder.native_callback);
-        JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
+        updateCallbacks();
     }
 
     public static void setClassLoadCallback(ClassLoadCallback callback) {
         setClassLoadCallback(callback, null);
     }
 
-    // (jvmtiEnv*, JNIEnv*, jthread, jclass) -> void
     public static void setClassPrepareCallback(ClassPrepareCallback callback, Thread event_thread) {
         class Holder {
             static volatile ClassPrepareCallback java_callback;
             static final long OFFSET = callbackOffset("ClassPrepare");
+            // (jvmtiEnv*, JNIEnv*, jthread, jclass) -> void
             static final FunctionDescriptor DESCRIPTOR =
                     FunctionDescriptor.ofVoid(WORD, WORD, WORD);
             static final MethodHandle HANDLE = Transformers.makeTransformer(
@@ -367,10 +374,148 @@ public class JVMTIEvents {
         Holder.java_callback = callback;
         CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
                 MemorySegment.NULL : Holder.native_callback);
-        JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
+        updateCallbacks();
     }
 
     public static void setClassPrepareCallback(ClassPrepareCallback callback) {
         setClassPrepareCallback(callback, null);
+    }
+
+    public static void setMonitorContendedEnterCallback(MonitorContendedEnterCallback callback, Thread event_thread) {
+        class Holder {
+            static volatile MonitorContendedEnterCallback java_callback;
+            static final long OFFSET = callbackOffset("MonitorContendedEnter");
+            // (jvmtiEnv*, JNIEnv*, jthread, jobject) -> void
+            static final FunctionDescriptor DESCRIPTOR =
+                    FunctionDescriptor.ofVoid(WORD, WORD, WORD);
+            static final MethodHandle HANDLE = Transformers.makeTransformer(
+                    DESCRIPTOR.toMethodType(), new AbstractTransformer() {
+                        @Override
+                        protected void transform(MethodHandle thiz, EmulatedStackFrame stack) {
+                            var tmp_callback = java_callback;
+                            if (tmp_callback == null) return;
+                            var accessor = stack.accessor();
+                            var thread = (Thread) JNIUtils.refToObject(getWord(accessor, 1));
+                            var object = JNIUtils.refToObject(getWord(accessor, 2));
+                            tmp_callback.invoke(thread, object);
+                        }
+                    });
+            static final MemorySegment native_callback = LINKER.upcallStub(
+                    HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
+        }
+        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
+                JVMTI_EVENT_MONITOR_CONTENDED_ENTER, event_thread);
+        Holder.java_callback = callback;
+        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
+                MemorySegment.NULL : Holder.native_callback);
+        updateCallbacks();
+    }
+
+    public static void setMonitorContendedEnterCallback(MonitorContendedEnterCallback callback) {
+        setMonitorContendedEnterCallback(callback, null);
+    }
+
+    public static void setMonitorContendedEnteredCallback(MonitorContendedEnteredCallback callback, Thread event_thread) {
+        class Holder {
+            static volatile MonitorContendedEnteredCallback java_callback;
+            static final long OFFSET = callbackOffset("MonitorContendedEntered");
+            // (jvmtiEnv*, JNIEnv*, jthread, jobject) -> void
+            static final FunctionDescriptor DESCRIPTOR =
+                    FunctionDescriptor.ofVoid(WORD, WORD, WORD);
+            static final MethodHandle HANDLE = Transformers.makeTransformer(
+                    DESCRIPTOR.toMethodType(), new AbstractTransformer() {
+                        @Override
+                        protected void transform(MethodHandle thiz, EmulatedStackFrame stack) {
+                            var tmp_callback = java_callback;
+                            if (tmp_callback == null) return;
+                            var accessor = stack.accessor();
+                            var thread = (Thread) JNIUtils.refToObject(getWord(accessor, 1));
+                            var object = JNIUtils.refToObject(getWord(accessor, 2));
+                            tmp_callback.invoke(thread, object);
+                        }
+                    });
+            static final MemorySegment native_callback = LINKER.upcallStub(
+                    HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
+        }
+        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
+                JVMTI_EVENT_MONITOR_CONTENDED_ENTERED, event_thread);
+        Holder.java_callback = callback;
+        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
+                MemorySegment.NULL : Holder.native_callback);
+        updateCallbacks();
+    }
+
+    public static void setMonitorContendedEnteredCallback(MonitorContendedEnteredCallback callback) {
+        setMonitorContendedEnteredCallback(callback, null);
+    }
+
+    public static void setMonitorWaitCallback(MonitorWaitCallback callback, Thread event_thread) {
+        class Holder {
+            static volatile MonitorWaitCallback java_callback;
+            static final long OFFSET = callbackOffset("MonitorWait");
+            // (jvmtiEnv*, JNIEnv*, jthread, jobject, jlong) -> void
+            static final FunctionDescriptor DESCRIPTOR =
+                    FunctionDescriptor.ofVoid(WORD, WORD, WORD, C_LONG);
+            static final MethodHandle HANDLE = Transformers.makeTransformer(
+                    DESCRIPTOR.toMethodType(), new AbstractTransformer() {
+                        @Override
+                        protected void transform(MethodHandle thiz, EmulatedStackFrame stack) {
+                            var tmp_callback = java_callback;
+                            if (tmp_callback == null) return;
+                            var accessor = stack.accessor();
+                            var thread = (Thread) JNIUtils.refToObject(getWord(accessor, 1));
+                            var object = JNIUtils.refToObject(getWord(accessor, 2));
+                            var timeout = accessor.getLong(3);
+                            tmp_callback.invoke(thread, object, timeout);
+                        }
+                    });
+            static final MemorySegment native_callback = LINKER.upcallStub(
+                    HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
+        }
+        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
+                JVMTI_EVENT_MONITOR_WAIT, event_thread);
+        Holder.java_callback = callback;
+        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
+                MemorySegment.NULL : Holder.native_callback);
+        updateCallbacks();
+    }
+
+    public static void setMonitorWaitCallback(MonitorWaitCallback callback) {
+        setMonitorWaitCallback(callback, null);
+    }
+
+    public static void setMonitorWaitedCallback(MonitorWaitedCallback callback, Thread event_thread) {
+        class Holder {
+            static volatile MonitorWaitedCallback java_callback;
+            static final long OFFSET = callbackOffset("MonitorWaited");
+            // (jvmtiEnv*, JNIEnv*, jthread, jobject, jboolean) -> void
+            static final FunctionDescriptor DESCRIPTOR =
+                    FunctionDescriptor.ofVoid(WORD, WORD, WORD, JAVA_BOOLEAN);
+            static final MethodHandle HANDLE = Transformers.makeTransformer(
+                    DESCRIPTOR.toMethodType(), new AbstractTransformer() {
+                        @Override
+                        protected void transform(MethodHandle thiz, EmulatedStackFrame stack) {
+                            var tmp_callback = java_callback;
+                            if (tmp_callback == null) return;
+                            var accessor = stack.accessor();
+                            var thread = (Thread) JNIUtils.refToObject(getWord(accessor, 1));
+                            var object = JNIUtils.refToObject(getWord(accessor, 2));
+                            var timed_out = accessor.getBoolean(3);
+                            tmp_callback.invoke(thread, object, timed_out);
+                        }
+                    });
+            static final MemorySegment native_callback = LINKER.upcallStub(
+                    HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
+        }
+        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
+                JVMTI_EVENT_MONITOR_WAITED, event_thread);
+        Holder.java_callback = callback;
+        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
+                MemorySegment.NULL : Holder.native_callback);
+        updateCallbacks();
+    }
+
+    public static void setMonitorWaitedCallback(MonitorWaitedCallback callback) {
+        setMonitorWaitedCallback(callback, null);
     }
 }

@@ -7,6 +7,13 @@ import static com.v7878.foreign.MemoryLayout.structLayout;
 import static com.v7878.foreign.ValueLayout.ADDRESS;
 import static com.v7878.foreign.ValueLayout.JAVA_LONG;
 import static com.v7878.ti.JVMTI.JVMTI_SCOPE;
+import static com.v7878.ti.JVMTIConstants.JVMTI_DISABLE;
+import static com.v7878.ti.JVMTIConstants.JVMTI_ENABLE;
+import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_BREAKPOINT;
+import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_CLASS_LOAD;
+import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_CLASS_PREPARE;
+import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_GARBAGE_COLLECTION_FINISH;
+import static com.v7878.ti.JVMTIConstants.JVMTI_EVENT_GARBAGE_COLLECTION_START;
 import static com.v7878.unsafe.AndroidUnsafe.IS64BIT;
 import static com.v7878.unsafe.foreign.ExtraLayouts.WORD;
 
@@ -217,7 +224,7 @@ public class JVMTIEvents {
     }
 
     // (jvmtiEnv*, JNIEnv*, jthread, jmethodID, jlocation) -> void
-    public static void setBreakpointCallback(BreakpointCallback callback) {
+    public static void setBreakpointCallback(BreakpointCallback callback, Thread event_thread) {
         class Holder {
             static volatile BreakpointCallback java_callback;
             static final long OFFSET = callbackOffset("Breakpoint");
@@ -239,14 +246,20 @@ public class JVMTIEvents {
             static final MemorySegment native_callback = LINKER.upcallStub(
                     HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
+        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
+                JVMTI_EVENT_BREAKPOINT, event_thread);
         Holder.java_callback = callback;
         CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
                 MemorySegment.NULL : Holder.native_callback);
         JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
     }
 
+    public static void setBreakpointCallback(BreakpointCallback callback) {
+        setBreakpointCallback(callback, null);
+    }
+
     // (jvmtiEnv *jvmti_env) -> void
-    public static void setGarbageCollectionCallback(GarbageCollectionCallback callback) {
+    public static void setGarbageCollectionCallback(GarbageCollectionCallback callback, Thread event_thread) {
         class Holder {
             static volatile GarbageCollectionCallback java_callback;
             static final long START_OFFSET = callbackOffset("GarbageCollectionStart");
@@ -277,6 +290,10 @@ public class JVMTIEvents {
             static final MemorySegment finish_native_callback = LINKER.upcallStub(
                     FINISH_HANDLE, DESCRIPTOR, JVMTI_SCOPE, allowExceptions());
         }
+        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
+                JVMTI_EVENT_GARBAGE_COLLECTION_START, event_thread);
+        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
+                JVMTI_EVENT_GARBAGE_COLLECTION_FINISH, event_thread);
         Holder.java_callback = callback;
         CALLBACKS.set(ADDRESS, Holder.START_OFFSET, callback == null ?
                 MemorySegment.NULL : Holder.start_native_callback);
@@ -285,8 +302,12 @@ public class JVMTIEvents {
         JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
     }
 
+    public static void setGarbageCollectionCallback(GarbageCollectionCallback callback) {
+        setGarbageCollectionCallback(callback, null);
+    }
+
     // (jvmtiEnv*, JNIEnv*, jthread, jclass) -> void
-    public static void setClassLoadCallback(ClassLoadCallback callback) {
+    public static void setClassLoadCallback(ClassLoadCallback callback, Thread event_thread) {
         class Holder {
             static volatile ClassLoadCallback java_callback;
             static final long OFFSET = callbackOffset("ClassLoad");
@@ -307,14 +328,20 @@ public class JVMTIEvents {
             static final MemorySegment native_callback = LINKER.upcallStub(
                     HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
+        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
+                JVMTI_EVENT_CLASS_LOAD, event_thread);
         Holder.java_callback = callback;
         CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
                 MemorySegment.NULL : Holder.native_callback);
         JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
     }
 
+    public static void setClassLoadCallback(ClassLoadCallback callback) {
+        setClassLoadCallback(callback, null);
+    }
+
     // (jvmtiEnv*, JNIEnv*, jthread, jclass) -> void
-    public static void setClassPrepareCallback(ClassPrepareCallback callback) {
+    public static void setClassPrepareCallback(ClassPrepareCallback callback, Thread event_thread) {
         class Holder {
             static volatile ClassPrepareCallback java_callback;
             static final long OFFSET = callbackOffset("ClassPrepare");
@@ -335,9 +362,15 @@ public class JVMTIEvents {
             static final MemorySegment native_callback = LINKER.upcallStub(
                     HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
+        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
+                JVMTI_EVENT_CLASS_PREPARE, event_thread);
         Holder.java_callback = callback;
         CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
                 MemorySegment.NULL : Holder.native_callback);
         JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
+    }
+
+    public static void setClassPrepareCallback(ClassPrepareCallback callback) {
+        setClassPrepareCallback(callback, null);
     }
 }

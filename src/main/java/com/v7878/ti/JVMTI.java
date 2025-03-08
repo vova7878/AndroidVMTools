@@ -886,11 +886,13 @@ public final class JVMTI {
         }
     }
 
+    // Used in JVMTIEvents
     static void SetEventCallbacks(long callbacks, int size_of_callbacks) throws JVMTIException {
         checkError(Native.INSTANCE.SetEventCallbacks(JVMTI_ENV, callbacks, size_of_callbacks));
     }
 
-    public static void SetEventNotificationMode(int mode, int event_type, Thread event_thread) throws JVMTIException {
+    // Used in JVMTIEvents
+    static void SetEventNotificationMode(int mode, int event_type, Thread event_thread) throws JVMTIException {
         checkError(Native.INSTANCE.SetEventNotificationMode(JVMTI_ENV, mode, event_type, event_thread));
     }
 

@@ -8,13 +8,12 @@ import static com.v7878.dex.DexConstants.ACC_STATIC;
 import static com.v7878.dex.builder.CodeBuilder.Op.GET_OBJECT;
 import static com.v7878.unsafe.ArtModifiers.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtModifiers.kAccPreCompiled;
-import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
+import static com.v7878.unsafe.ArtModifiers.kAccSkipAccessChecks;
 import static com.v7878.unsafe.DexFileUtils.openDexFile;
 import static com.v7878.unsafe.Reflection.fieldOffset;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 import static com.v7878.unsafe.Reflection.unreflect;
-import static com.v7878.unsafe.Utils.unsupportedSDK;
 import static com.v7878.vmtools._Utils.rawMethodTypeOf;
 
 import android.util.Pair;
@@ -30,7 +29,6 @@ import com.v7878.dex.immutable.ProtoId;
 import com.v7878.dex.immutable.TypeId;
 import com.v7878.ti.JVMTI;
 import com.v7878.unsafe.AndroidUnsafe;
-import com.v7878.unsafe.ApiSensitive;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
 import com.v7878.unsafe.ClassUtils.ClassStatus;
@@ -47,9 +45,6 @@ import java.util.List;
 import java.util.Map;
 
 public class TIHooks {
-    private static final ClassLoader BOOT_CLASS_LOADER =
-            ClassLoader.getSystemClassLoader().getParent();
-
     private static class ExecutableRedefinitionRequest {
         final Executable executable;
         final HookTransformer hooker;
@@ -104,16 +99,6 @@ public class TIHooks {
             this.backup = backup;
         }
     }
-
-    // TODO: move to ArtModifiers
-    @ApiSensitive
-    public static final int kAccSkipAccessChecks = switch (ART_SDK_INT) {
-        case 36 /*android 16*/, 35 /*android 15*/, 34 /*android 14*/,
-             33 /*android 13*/, 32 /*android 12L*/, 31 /*android 12*/,
-             30 /*android 11*/, 29 /*android 10*/, 28 /*android 9*/,
-             27 /*android 8.1*/, 26 /*android 8*/ -> 0x00080000;
-        default -> throw unsupportedSDK(ART_SDK_INT);
-    };
 
     public static void hook(Map<Executable, HookTransformer> hooks) {
         if (hooks.size() == 0) return;
@@ -188,6 +173,7 @@ public class TIHooks {
                             .withFlags(ACC_PUBLIC | ACC_STATIC)
                             .withName(executable.methodName())
                             .withProto(executable.static_proto)
+                            // TODO: dequicken for api [28, 30]
                             .withCode(edef.getImplementation())
                     );
                 }
@@ -196,10 +182,6 @@ public class TIHooks {
                 var dexfile = openDexFile(DexIO.write(Dex.of(backup_def)));
                 DexFileUtils.setTrusted(dexfile);
 
-                if (loader == BOOT_CLASS_LOADER) {
-                    // TODO: move this check to DexFileUtils.loadClass
-                    loader = null;
-                }
                 var backup = DexFileUtils.loadClass(dexfile, backup_name, loader);
                 ClassUtils.setClassStatus(backup, ClassStatus.Verified);
 

@@ -218,7 +218,12 @@ public class JVMTIEvents {
     private static final long CALLBACKS_ADDRESS = CALLBACKS.nativeAddress();
     private static final int CALLBACKS_SIZE = Math.toIntExact(CALLBACKS.byteSize());
 
-    private static void updateCallbacks() {
+    private static void updateMode(boolean enable, int event_type, Thread event_thread) {
+        JVMTI.SetEventNotificationMode(enable ? JVMTI_ENABLE : JVMTI_DISABLE, event_type, event_thread);
+    }
+
+    private static void updateCallbacks(boolean enable, long offset, MemorySegment value) {
+        CALLBACKS.set(ADDRESS, offset, enable ? value : MemorySegment.NULL);
         JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
     }
 
@@ -253,12 +258,9 @@ public class JVMTIEvents {
             static final MemorySegment native_callback = LINKER.upcallStub(
                     HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
-        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
-                JVMTI_EVENT_BREAKPOINT, event_thread);
+        updateMode(callback != null, JVMTI_EVENT_BREAKPOINT, event_thread);
         Holder.java_callback = callback;
-        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
-                MemorySegment.NULL : Holder.native_callback);
-        updateCallbacks();
+        updateCallbacks(callback != null, Holder.OFFSET, Holder.native_callback);
     }
 
     public static void setBreakpointCallback(BreakpointCallback callback) {
@@ -297,16 +299,11 @@ public class JVMTIEvents {
             static final MemorySegment finish_native_callback = LINKER.upcallStub(
                     FINISH_HANDLE, DESCRIPTOR, JVMTI_SCOPE, allowExceptions());
         }
-        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
-                JVMTI_EVENT_GARBAGE_COLLECTION_START, event_thread);
-        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
-                JVMTI_EVENT_GARBAGE_COLLECTION_FINISH, event_thread);
+        updateMode(callback != null, JVMTI_EVENT_GARBAGE_COLLECTION_START, event_thread);
+        updateMode(callback != null, JVMTI_EVENT_GARBAGE_COLLECTION_FINISH, event_thread);
         Holder.java_callback = callback;
-        CALLBACKS.set(ADDRESS, Holder.START_OFFSET, callback == null ?
-                MemorySegment.NULL : Holder.start_native_callback);
-        CALLBACKS.set(ADDRESS, Holder.FINISH_OFFSET, callback == null ?
-                MemorySegment.NULL : Holder.finish_native_callback);
-        updateCallbacks();
+        updateCallbacks(callback != null, Holder.START_OFFSET, Holder.start_native_callback);
+        updateCallbacks(callback != null, Holder.FINISH_OFFSET, Holder.finish_native_callback);
     }
 
     public static void setGarbageCollectionCallback(GarbageCollectionCallback callback) {
@@ -335,12 +332,9 @@ public class JVMTIEvents {
             static final MemorySegment native_callback = LINKER.upcallStub(
                     HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
-        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
-                JVMTI_EVENT_CLASS_LOAD, event_thread);
+        updateMode(callback != null, JVMTI_EVENT_CLASS_LOAD, event_thread);
         Holder.java_callback = callback;
-        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
-                MemorySegment.NULL : Holder.native_callback);
-        updateCallbacks();
+        updateCallbacks(callback != null, Holder.OFFSET, Holder.native_callback);
     }
 
     public static void setClassLoadCallback(ClassLoadCallback callback) {
@@ -369,12 +363,9 @@ public class JVMTIEvents {
             static final MemorySegment native_callback = LINKER.upcallStub(
                     HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
-        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
-                JVMTI_EVENT_CLASS_PREPARE, event_thread);
+        updateMode(callback != null, JVMTI_EVENT_CLASS_PREPARE, event_thread);
         Holder.java_callback = callback;
-        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
-                MemorySegment.NULL : Holder.native_callback);
-        updateCallbacks();
+        updateCallbacks(callback != null, Holder.OFFSET, Holder.native_callback);
     }
 
     public static void setClassPrepareCallback(ClassPrepareCallback callback) {
@@ -403,12 +394,9 @@ public class JVMTIEvents {
             static final MemorySegment native_callback = LINKER.upcallStub(
                     HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
-        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
-                JVMTI_EVENT_MONITOR_CONTENDED_ENTER, event_thread);
+        updateMode(callback != null, JVMTI_EVENT_MONITOR_CONTENDED_ENTER, event_thread);
         Holder.java_callback = callback;
-        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
-                MemorySegment.NULL : Holder.native_callback);
-        updateCallbacks();
+        updateCallbacks(callback != null, Holder.OFFSET, Holder.native_callback);
     }
 
     public static void setMonitorContendedEnterCallback(MonitorContendedEnterCallback callback) {
@@ -437,12 +425,9 @@ public class JVMTIEvents {
             static final MemorySegment native_callback = LINKER.upcallStub(
                     HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
-        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
-                JVMTI_EVENT_MONITOR_CONTENDED_ENTERED, event_thread);
+        updateMode(callback != null, JVMTI_EVENT_MONITOR_CONTENDED_ENTERED, event_thread);
         Holder.java_callback = callback;
-        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
-                MemorySegment.NULL : Holder.native_callback);
-        updateCallbacks();
+        updateCallbacks(callback != null, Holder.OFFSET, Holder.native_callback);
     }
 
     public static void setMonitorContendedEnteredCallback(MonitorContendedEnteredCallback callback) {
@@ -472,12 +457,9 @@ public class JVMTIEvents {
             static final MemorySegment native_callback = LINKER.upcallStub(
                     HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
-        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
-                JVMTI_EVENT_MONITOR_WAIT, event_thread);
+        updateMode(callback != null, JVMTI_EVENT_MONITOR_WAIT, event_thread);
         Holder.java_callback = callback;
-        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
-                MemorySegment.NULL : Holder.native_callback);
-        updateCallbacks();
+        updateCallbacks(callback != null, Holder.OFFSET, Holder.native_callback);
     }
 
     public static void setMonitorWaitCallback(MonitorWaitCallback callback) {
@@ -507,12 +489,9 @@ public class JVMTIEvents {
             static final MemorySegment native_callback = LINKER.upcallStub(
                     HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
         }
-        JVMTI.SetEventNotificationMode(callback == null ? JVMTI_DISABLE : JVMTI_ENABLE,
-                JVMTI_EVENT_MONITOR_WAITED, event_thread);
+        updateMode(callback != null, JVMTI_EVENT_MONITOR_WAITED, event_thread);
         Holder.java_callback = callback;
-        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
-                MemorySegment.NULL : Holder.native_callback);
-        updateCallbacks();
+        updateCallbacks(callback != null, Holder.OFFSET, Holder.native_callback);
     }
 
     public static void setMonitorWaitedCallback(MonitorWaitedCallback callback) {

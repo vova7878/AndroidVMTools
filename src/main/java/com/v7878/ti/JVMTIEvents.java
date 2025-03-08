@@ -34,6 +34,16 @@ public class JVMTIEvents {
         void invoke(boolean start_or_finish);
     }
 
+    @FunctionalInterface
+    public interface ClassLoadCallback {
+        void invoke(Thread thread, Class<?> klass);
+    }
+
+    @FunctionalInterface
+    public interface ClassPrepareCallback {
+        void invoke(Thread thread, Class<?> klass);
+    }
+
     // TODO
     //typedef void (JNICALL *jvmtiEventClassFileLoadHook)
     //    (jvmtiEnv *jvmti_env,
@@ -46,18 +56,6 @@ public class JVMTIEvents {
     //     const unsigned char* class_data,
     //     jint* new_class_data_len,
     //     unsigned char** new_class_data);
-    //typedef void (JNICALL *jvmtiEventClassLoad)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env,
-    //     jthread thread,
-    //     jclass klass);
-    //typedef void (JNICALL *jvmtiEventClassPrepare)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env,
-    //     jthread thread,
-    //     jclass klass);
-    //typedef void (JNICALL *jvmtiEventDataDumpRequest)
-    //    (jvmtiEnv *jvmti_env);
     //typedef void (JNICALL *jvmtiEventException)
     //    (jvmtiEnv *jvmti_env,
     //     JNIEnv* jni_env,
@@ -141,6 +139,13 @@ public class JVMTIEvents {
     //     jmethodID method,
     //     void* address,
     //     void** new_address_ptr);
+    //typedef void (JNICALL *jvmtiEventVMObjectAlloc)
+    //    (jvmtiEnv *jvmti_env,
+    //     JNIEnv* jni_env,
+    //     jthread thread,
+    //     jobject object,
+    //     jclass object_klass,
+    //     jlong size);
     //typedef void (JNICALL *jvmtiEventObjectFree)
     //    (jvmtiEnv *jvmti_env,
     //     jlong tag);
@@ -158,13 +163,6 @@ public class JVMTIEvents {
     //    (jvmtiEnv *jvmti_env,
     //     JNIEnv* jni_env,
     //     jthread thread);
-    //typedef void (JNICALL *jvmtiEventVMObjectAlloc)
-    //    (jvmtiEnv *jvmti_env,
-    //     JNIEnv* jni_env,
-    //     jthread thread,
-    //     jobject object,
-    //     jclass object_klass,
-    //     jlong size);
 
     public static final GroupLayout JVMTI_EVENT_CALLBACKS_LAYOUT = structLayout(
             ADDRESS.withName("VMInit"),
@@ -284,6 +282,62 @@ public class JVMTIEvents {
                 MemorySegment.NULL : Holder.start_native_callback);
         CALLBACKS.set(ADDRESS, Holder.FINISH_OFFSET, callback == null ?
                 MemorySegment.NULL : Holder.finish_native_callback);
+        JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
+    }
+
+    // (jvmtiEnv*, JNIEnv*, jthread, jclass) -> void
+    public static void setClassLoadCallback(ClassLoadCallback callback) {
+        class Holder {
+            static volatile ClassLoadCallback java_callback;
+            static final long OFFSET = callbackOffset("ClassLoad");
+            static final FunctionDescriptor DESCRIPTOR =
+                    FunctionDescriptor.ofVoid(WORD, WORD, WORD);
+            static final MethodHandle HANDLE = Transformers.makeTransformer(
+                    DESCRIPTOR.toMethodType(), new AbstractTransformer() {
+                        @Override
+                        protected void transform(MethodHandle thiz, EmulatedStackFrame stack) {
+                            var tmp_callback = java_callback;
+                            if (tmp_callback == null) return;
+                            var accessor = stack.accessor();
+                            var thread = (Thread) JNIUtils.refToObject(getWord(accessor, 1));
+                            var klass = (Class<?>) JNIUtils.refToObject(getWord(accessor, 2));
+                            tmp_callback.invoke(thread, klass);
+                        }
+                    });
+            static final MemorySegment native_callback = LINKER.upcallStub(
+                    HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
+        }
+        Holder.java_callback = callback;
+        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
+                MemorySegment.NULL : Holder.native_callback);
+        JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
+    }
+
+    // (jvmtiEnv*, JNIEnv*, jthread, jclass) -> void
+    public static void setClassPrepareCallback(ClassPrepareCallback callback) {
+        class Holder {
+            static volatile ClassPrepareCallback java_callback;
+            static final long OFFSET = callbackOffset("ClassPrepare");
+            static final FunctionDescriptor DESCRIPTOR =
+                    FunctionDescriptor.ofVoid(WORD, WORD, WORD);
+            static final MethodHandle HANDLE = Transformers.makeTransformer(
+                    DESCRIPTOR.toMethodType(), new AbstractTransformer() {
+                        @Override
+                        protected void transform(MethodHandle thiz, EmulatedStackFrame stack) {
+                            var tmp_callback = java_callback;
+                            if (tmp_callback == null) return;
+                            var accessor = stack.accessor();
+                            var thread = (Thread) JNIUtils.refToObject(getWord(accessor, 1));
+                            var klass = (Class<?>) JNIUtils.refToObject(getWord(accessor, 2));
+                            tmp_callback.invoke(thread, klass);
+                        }
+                    });
+            static final MemorySegment native_callback = LINKER.upcallStub(
+                    HANDLE, DESCRIPTOR, JVMTI_SCOPE, JNIEnvArg(1), allowExceptions());
+        }
+        Holder.java_callback = callback;
+        CALLBACKS.set(ADDRESS, Holder.OFFSET, callback == null ?
+                MemorySegment.NULL : Holder.native_callback);
         JVMTI.SetEventCallbacks(CALLBACKS_ADDRESS, CALLBACKS_SIZE);
     }
 }

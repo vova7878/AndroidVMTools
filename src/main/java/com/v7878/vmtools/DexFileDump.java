@@ -22,8 +22,11 @@ import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
 import static com.v7878.unsafe.DexFileUtils.DEXFILE_LAYOUT;
 import static com.v7878.unsafe.DexFileUtils.getDexFileStruct;
 
+import android.util.Pair;
+
 import com.v7878.dex.DexConstants;
 import com.v7878.dex.DexIO;
+import com.v7878.dex.DexIO.DexReaderCache;
 import com.v7878.dex.DexOffsets;
 import com.v7878.dex.ReadOptions;
 import com.v7878.dex.immutable.ClassDef;
@@ -39,6 +42,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.Adler32;
@@ -219,7 +223,7 @@ public final class DexFileDump {
                 "Unsupported dex version: " + Integer.toHexString(version));
     }
 
-    public static Dex readDex(Class<?>... classes) {
+    private static Map<Long, Set<Integer>> getStructMap(Class<?>... classes) {
         Map<Long, Set<Integer>> data = new HashMap<>();
         for (var clazz : classes) {
             int index = VM.getDexClassDefIndex(clazz);
@@ -230,13 +234,33 @@ public final class DexFileDump {
             long struct = DexFileUtils.getDexFileStruct(clazz);
             data.computeIfAbsent(struct, v -> new HashSet<>()).add(index);
         }
-        var class_defs = new ArrayList<ClassDef>(classes.length);
+        return data;
+    }
+
+    public static Dex readDex(Class<?>... classes) {
+        var data = getStructMap(classes);
+        var defs = new ArrayList<ClassDef>(classes.length);
         for (var entry : data.entrySet()) {
             int header_offset = getHeaderOffset(entry.getKey());
-            class_defs.addAll(DexIO.readSingleDex(ReadOptions.defaultOptions(),
+            defs.addAll(DexIO.read(ReadOptions.defaultOptions(),
                     getDexFileContent(entry.getKey()), 0, header_offset,
                     entry.getValue().stream().mapToInt(v -> v).toArray()).getClasses());
         }
-        return Dex.of(class_defs);
+        return Dex.of(defs);
+    }
+
+    public static List<Pair<ClassDef, DexReaderCache>> readWithCache(Class<?>... classes) {
+        var data = getStructMap(classes);
+        var defs = new ArrayList<Pair<ClassDef, DexReaderCache>>(classes.length);
+        for (var entry : data.entrySet()) {
+            int header_offset = getHeaderOffset(entry.getKey());
+            var cache = DexIO.readCache(ReadOptions.defaultOptions(),
+                    getDexFileContent(entry.getKey()), 0, header_offset);
+            entry.getValue().stream()
+                    .map(idx -> new Pair<>(cache.getClassDef(idx), cache))
+                    .forEach(defs::add);
+        }
+        defs.trimToSize();
+        return defs;
     }
 }

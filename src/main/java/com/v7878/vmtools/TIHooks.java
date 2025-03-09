@@ -9,30 +9,49 @@ import static com.v7878.dex.builder.CodeBuilder.Op.GET_OBJECT;
 import static com.v7878.unsafe.ArtModifiers.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtModifiers.kAccPreCompiled;
 import static com.v7878.unsafe.ArtModifiers.kAccSkipAccessChecks;
+import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
 import static com.v7878.unsafe.DexFileUtils.openDexFile;
 import static com.v7878.unsafe.Reflection.fieldOffset;
+import static com.v7878.unsafe.Reflection.getArtMethods;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 import static com.v7878.unsafe.Reflection.unreflect;
+import static com.v7878.unsafe.Utils.check;
+import static com.v7878.unsafe.foreign.BulkLinker.CallType.CRITICAL;
+import static com.v7878.unsafe.foreign.BulkLinker.MapType.INT;
+import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
+import static com.v7878.unsafe.foreign.BulkLinker.MapType.SHORT;
+import static com.v7878.unsafe.foreign.BulkLinker.processSymbols;
+import static com.v7878.unsafe.foreign.LibArt.ART;
 import static com.v7878.vmtools._Utils.rawMethodTypeOf;
 
 import android.util.Pair;
 
 import com.v7878.dex.DexIO;
+import com.v7878.dex.Opcode;
 import com.v7878.dex.builder.ClassBuilder;
+import com.v7878.dex.builder.MethodBuilder;
 import com.v7878.dex.immutable.ClassDef;
 import com.v7878.dex.immutable.Dex;
 import com.v7878.dex.immutable.FieldId;
 import com.v7878.dex.immutable.MethodDef;
 import com.v7878.dex.immutable.MethodId;
+import com.v7878.dex.immutable.MethodImplementation;
 import com.v7878.dex.immutable.ProtoId;
 import com.v7878.dex.immutable.TypeId;
+import com.v7878.dex.immutable.bytecode.Instruction35c35mi35ms;
+import com.v7878.dex.immutable.bytecode.Instruction3rc3rmi3rms;
+import com.v7878.foreign.Arena;
+import com.v7878.r8.annotations.DoNotOptimize;
+import com.v7878.r8.annotations.DoNotShrink;
+import com.v7878.r8.annotations.DoNotShrinkType;
 import com.v7878.ti.JVMTI;
 import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
 import com.v7878.unsafe.ClassUtils.ClassStatus;
 import com.v7878.unsafe.DexFileUtils;
+import com.v7878.unsafe.foreign.BulkLinker;
 import com.v7878.unsafe.invoke.Transformers;
 
 import java.lang.invoke.MethodHandle;
@@ -83,6 +102,7 @@ public class TIHooks {
         final List<ExecutableRedefinitionRequest> executables;
 
         ClassDef def;
+        DexIO.DexReaderCache cache;
         TypeId backup;
 
         private ClassRedefinitionRequest(Class<?> clazz) {
@@ -90,14 +110,107 @@ public class TIHooks {
             this.clazz = clazz;
         }
 
-        public void setDef(ClassDef def) {
-            this.def = def;
-            executables.forEach(ex -> ex.setDef(def));
+        public void setDef(Pair<ClassDef, DexIO.DexReaderCache> pair) {
+            if (ART_SDK_INT >= 28 && ART_SDK_INT <= 30) {
+                this.def = dequicken(pair.second, clazz, pair.first);
+            } else {
+                this.def = pair.first;
+            }
+            this.cache = pair.second;
+            this.executables.forEach(ex -> ex.setDef(this.def));
         }
 
         public void setBackup(TypeId backup) {
             this.backup = backup;
         }
+    }
+
+    @DoNotShrinkType
+    @DoNotOptimize
+    @SuppressWarnings("SameParameterValue")
+    private abstract static class Native {
+        @DoNotShrink
+        private static final Arena SCOPE = Arena.ofAuto();
+
+        @BulkLinker.LibrarySymbol(name = "_ZN3art9ArtMethod22GetIndexFromQuickeningEj")
+        @BulkLinker.CallSignature(type = CRITICAL, ret = SHORT, args = {LONG_AS_WORD, INT})
+        abstract short GetIndexFromQuickening(long thiz, int dex_pc);
+
+        static final Native INSTANCE = AndroidUnsafe.allocateInstance(
+                processSymbols(SCOPE, Native.class, ART));
+    }
+
+    private static MethodId getMethodId(DexIO.DexReaderCache cache, long art_method, int dex_pc) {
+        int idx = Native.INSTANCE.GetIndexFromQuickening(art_method, dex_pc) & 0xffff;
+        check(idx != 0xffff, AssertionError::new);
+        return cache.getMethodId(idx);
+    }
+
+    private static MethodImplementation dequicken(
+            DexIO.DexReaderCache cache, long art_method, MethodImplementation impl) {
+        var insns = new ArrayList<>(impl.getInstructions());
+        boolean modified = false;
+        int pc = 0;
+        for (int i = 0; i < insns.size(); i++) {
+            var insn = insns.get(i);
+            switch (insn.getOpcode()) {
+                case INVOKE_VIRTUAL_QUICK -> {
+                    var tmp = (Instruction35c35mi35ms) insn;
+                    var mid = getMethodId(cache, art_method, pc);
+                    insns.set(i, Instruction35c35mi35ms.of(
+                            Opcode.INVOKE_VIRTUAL,
+                            tmp.getRegisterCount(),
+                            tmp.getRegister1(),
+                            tmp.getRegister2(),
+                            tmp.getRegister3(),
+                            tmp.getRegister4(),
+                            tmp.getRegister5(),
+                            mid
+                    ));
+                    modified = true;
+                }
+                case INVOKE_VIRTUAL_QUICK_RANGE -> {
+                    var tmp = (Instruction3rc3rmi3rms) insn;
+                    var mid = getMethodId(cache, art_method, pc);
+                    insns.set(i, Instruction3rc3rmi3rms.of(
+                            Opcode.INVOKE_VIRTUAL_RANGE,
+                            tmp.getRegisterCount(),
+                            tmp.getStartRegister(),
+                            mid
+                    ));
+                    modified = true;
+                }
+            }
+            pc += insn.getUnitCount();
+        }
+        if (modified) {
+            return MethodImplementation.of(impl.getRegisterCount(),
+                    insns, impl.getTryBlocks(), impl.getDebugItems());
+        }
+        return impl;
+    }
+
+    private static ClassDef dequicken(
+            DexIO.DexReaderCache cache, Class<?> clazz, ClassDef cdef) {
+        var art_methods = getArtMethods(clazz);
+        var old_methods = cdef.getMethods();
+        assert art_methods.length == old_methods.size();
+        var new_methods = new ArrayList<MethodDef>(old_methods.size());
+        int i = 0;
+        for (var edef : old_methods) {
+            var impl = edef.getImplementation();
+            if (impl != null) {
+                var art_method = art_methods[i];
+                new_methods.add(MethodBuilder.build(mb -> mb
+                        .of(edef)
+                        .withCode(dequicken(cache, art_method, impl))
+                ));
+            } else {
+                new_methods.add(edef);
+            }
+            i++;
+        }
+        return ClassBuilder.build(cb -> cb.of(cdef).setMethods(new_methods));
     }
 
     public static void hook(Map<Executable, HookTransformer> hooks) {
@@ -126,12 +239,15 @@ public class TIHooks {
                     executable, hooker, count[0]++));
         });
 
-        Dex data = DexFileDump.readDex(requests.values().stream()
+        var data = DexFileDump.readWithCache(requests.values().stream()
                 .flatMap(map -> map.keySet().stream())
                 .toArray(Class[]::new));
         for (var requests_map : requests.values()) {
             for (var entry : requests_map.entrySet()) {
-                entry.getValue().setDef(data.findClass(TypeId.of(entry.getKey())));
+                var type = TypeId.of(entry.getKey());
+                entry.getValue().setDef(data.stream()
+                        .filter(pair -> type.equals(pair.first.getType()))
+                        .findAny().orElseThrow());
             }
         }
 
@@ -173,7 +289,6 @@ public class TIHooks {
                             .withFlags(ACC_PUBLIC | ACC_STATIC)
                             .withName(executable.methodName())
                             .withProto(executable.static_proto)
-                            // TODO: dequicken for api [28, 30]
                             .withCode(edef.getImplementation())
                     );
                 }

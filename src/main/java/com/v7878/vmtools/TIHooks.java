@@ -5,6 +5,20 @@ import static com.v7878.dex.DexConstants.ACC_FINAL;
 import static com.v7878.dex.DexConstants.ACC_NATIVE;
 import static com.v7878.dex.DexConstants.ACC_PUBLIC;
 import static com.v7878.dex.DexConstants.ACC_STATIC;
+import static com.v7878.dex.Opcode.IGET;
+import static com.v7878.dex.Opcode.IGET_BOOLEAN;
+import static com.v7878.dex.Opcode.IGET_BYTE;
+import static com.v7878.dex.Opcode.IGET_CHAR;
+import static com.v7878.dex.Opcode.IGET_OBJECT;
+import static com.v7878.dex.Opcode.IGET_SHORT;
+import static com.v7878.dex.Opcode.IGET_WIDE;
+import static com.v7878.dex.Opcode.IPUT;
+import static com.v7878.dex.Opcode.IPUT_BOOLEAN;
+import static com.v7878.dex.Opcode.IPUT_BYTE;
+import static com.v7878.dex.Opcode.IPUT_CHAR;
+import static com.v7878.dex.Opcode.IPUT_OBJECT;
+import static com.v7878.dex.Opcode.IPUT_SHORT;
+import static com.v7878.dex.Opcode.IPUT_WIDE;
 import static com.v7878.dex.builder.CodeBuilder.Op.GET_OBJECT;
 import static com.v7878.unsafe.ArtModifiers.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtModifiers.kAccPreCompiled;
@@ -17,7 +31,10 @@ import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getDeclaredMethod;
 import static com.v7878.unsafe.Reflection.unreflect;
 import static com.v7878.unsafe.Utils.check;
+import static com.v7878.unsafe.Utils.shouldNotReachHere;
+import static com.v7878.unsafe.foreign.BulkLinker.CallSignature;
 import static com.v7878.unsafe.foreign.BulkLinker.CallType.CRITICAL;
+import static com.v7878.unsafe.foreign.BulkLinker.LibrarySymbol;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.INT;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.SHORT;
@@ -28,6 +45,7 @@ import static com.v7878.vmtools._Utils.rawMethodTypeOf;
 import android.util.Pair;
 
 import com.v7878.dex.DexIO;
+import com.v7878.dex.DexIO.DexReaderCache;
 import com.v7878.dex.Opcode;
 import com.v7878.dex.builder.ClassBuilder;
 import com.v7878.dex.builder.MethodBuilder;
@@ -39,6 +57,8 @@ import com.v7878.dex.immutable.MethodId;
 import com.v7878.dex.immutable.MethodImplementation;
 import com.v7878.dex.immutable.ProtoId;
 import com.v7878.dex.immutable.TypeId;
+import com.v7878.dex.immutable.bytecode.Instruction10x;
+import com.v7878.dex.immutable.bytecode.Instruction22c22cs;
 import com.v7878.dex.immutable.bytecode.Instruction35c35mi35ms;
 import com.v7878.dex.immutable.bytecode.Instruction3rc3rmi3rms;
 import com.v7878.foreign.Arena;
@@ -51,7 +71,6 @@ import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
 import com.v7878.unsafe.ClassUtils.ClassStatus;
 import com.v7878.unsafe.DexFileUtils;
-import com.v7878.unsafe.foreign.BulkLinker;
 import com.v7878.unsafe.invoke.Transformers;
 
 import java.lang.invoke.MethodHandle;
@@ -64,6 +83,10 @@ import java.util.List;
 import java.util.Map;
 
 public class TIHooks {
+    private static boolean needsDequicken() {
+        return ART_SDK_INT >= 28 && ART_SDK_INT <= 30;
+    }
+
     private static class ExecutableRedefinitionRequest {
         final Executable executable;
         final HookTransformer hooker;
@@ -102,7 +125,6 @@ public class TIHooks {
         final List<ExecutableRedefinitionRequest> executables;
 
         ClassDef def;
-        DexIO.DexReaderCache cache;
         TypeId backup;
 
         private ClassRedefinitionRequest(Class<?> clazz) {
@@ -110,13 +132,8 @@ public class TIHooks {
             this.clazz = clazz;
         }
 
-        public void setDef(Pair<ClassDef, DexIO.DexReaderCache> pair) {
-            if (ART_SDK_INT >= 28 && ART_SDK_INT <= 30) {
-                this.def = dequicken(pair.second, clazz, pair.first);
-            } else {
-                this.def = pair.first;
-            }
-            this.cache = pair.second;
+        public void setDef(Pair<ClassDef, DexReaderCache> pair) {
+            this.def = needsDequicken() ? dequicken(pair.second, clazz, pair.first) : pair.first;
             this.executables.forEach(ex -> ex.setDef(this.def));
         }
 
@@ -132,22 +149,30 @@ public class TIHooks {
         @DoNotShrink
         private static final Arena SCOPE = Arena.ofAuto();
 
-        @BulkLinker.LibrarySymbol(name = "_ZN3art9ArtMethod22GetIndexFromQuickeningEj")
-        @BulkLinker.CallSignature(type = CRITICAL, ret = SHORT, args = {LONG_AS_WORD, INT})
+        @LibrarySymbol(name = "_ZN3art9ArtMethod22GetIndexFromQuickeningEj")
+        @CallSignature(type = CRITICAL, ret = SHORT, args = {LONG_AS_WORD, INT})
         abstract short GetIndexFromQuickening(long thiz, int dex_pc);
 
         static final Native INSTANCE = AndroidUnsafe.allocateInstance(
                 processSymbols(SCOPE, Native.class, ART));
     }
 
-    private static MethodId getMethodId(DexIO.DexReaderCache cache, long art_method, int dex_pc) {
+    private static int getQuickId(long art_method, int dex_pc) {
         int idx = Native.INSTANCE.GetIndexFromQuickening(art_method, dex_pc) & 0xffff;
         check(idx != 0xffff, AssertionError::new);
-        return cache.getMethodId(idx);
+        return idx;
+    }
+
+    private static MethodId getMethodId(DexReaderCache cache, long art_method, int dex_pc) {
+        return cache.getMethodId(getQuickId(art_method, dex_pc));
+    }
+
+    private static FieldId getFieldId(DexReaderCache cache, long art_method, int dex_pc) {
+        return cache.getFieldId(getQuickId(art_method, dex_pc));
     }
 
     private static MethodImplementation dequicken(
-            DexIO.DexReaderCache cache, long art_method, MethodImplementation impl) {
+            DexReaderCache cache, long art_method, MethodImplementation impl) {
         var insns = new ArrayList<>(impl.getInstructions());
         boolean modified = false;
         int pc = 0;
@@ -180,7 +205,55 @@ public class TIHooks {
                     ));
                     modified = true;
                 }
+                case IGET_BOOLEAN_QUICK,
+                     IGET_BYTE_QUICK,
+                     IGET_CHAR_QUICK,
+                     IGET_SHORT_QUICK,
+                     IGET_QUICK,
+                     IGET_WIDE_QUICK,
+                     IGET_OBJECT_QUICK,
+
+                     IPUT_BOOLEAN_QUICK,
+                     IPUT_BYTE_QUICK,
+                     IPUT_CHAR_QUICK,
+                     IPUT_SHORT_QUICK,
+                     IPUT_QUICK,
+                     IPUT_WIDE_QUICK,
+                     IPUT_OBJECT_QUICK -> {
+                    var tmp = (Instruction22c22cs) insn;
+                    var fid = getFieldId(cache, art_method, pc);
+                    insns.set(i, Instruction22c22cs.of(
+                            switch (insn.getOpcode()) {
+                                case IGET_BOOLEAN_QUICK -> IGET_BOOLEAN;
+                                case IGET_BYTE_QUICK -> IGET_BYTE;
+                                case IGET_CHAR_QUICK -> IGET_CHAR;
+                                case IGET_SHORT_QUICK -> IGET_SHORT;
+                                case IGET_QUICK -> IGET;
+                                case IGET_WIDE_QUICK -> IGET_WIDE;
+                                case IGET_OBJECT_QUICK -> IGET_OBJECT;
+
+                                case IPUT_BOOLEAN_QUICK -> IPUT_BOOLEAN;
+                                case IPUT_BYTE_QUICK -> IPUT_BYTE;
+                                case IPUT_CHAR_QUICK -> IPUT_CHAR;
+                                case IPUT_SHORT_QUICK -> IPUT_SHORT;
+                                case IPUT_QUICK -> IPUT;
+                                case IPUT_WIDE_QUICK -> IPUT_WIDE;
+                                case IPUT_OBJECT_QUICK -> IPUT_OBJECT;
+
+                                default -> throw shouldNotReachHere();
+                            },
+                            tmp.getRegister1(),
+                            tmp.getRegister2(),
+                            fid
+                    ));
+                    modified = true;
+                }
+                case RETURN_VOID_NO_BARRIER -> {
+                    insns.set(i, Instruction10x.of(Opcode.RETURN_VOID));
+                    modified = true;
+                }
             }
+            assert !insns.get(i).getOpcode().odexOnly();
             pc += insn.getUnitCount();
         }
         if (modified) {
@@ -191,7 +264,7 @@ public class TIHooks {
     }
 
     private static ClassDef dequicken(
-            DexIO.DexReaderCache cache, Class<?> clazz, ClassDef cdef) {
+            DexReaderCache cache, Class<?> clazz, ClassDef cdef) {
         var art_methods = getArtMethods(clazz);
         var old_methods = cdef.getMethods();
         assert art_methods.length == old_methods.size();
@@ -320,6 +393,7 @@ public class TIHooks {
         for (var loader_entry : requests.entrySet()) {
             for (var request_entry : loader_entry.getValue().entrySet()) {
                 var request = request_entry.getValue();
+
                 var hook_builder = ClassBuilder.newInstance();
                 hook_builder.of(request.def);
 

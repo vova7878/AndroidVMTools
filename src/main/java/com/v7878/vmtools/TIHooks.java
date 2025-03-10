@@ -1,6 +1,7 @@
 package com.v7878.vmtools;
 
 import static com.v7878.dex.DexConstants.ACC_ABSTRACT;
+import static com.v7878.dex.DexConstants.ACC_DIRECT_MASK;
 import static com.v7878.dex.DexConstants.ACC_FINAL;
 import static com.v7878.dex.DexConstants.ACC_NATIVE;
 import static com.v7878.dex.DexConstants.ACC_PUBLIC;
@@ -84,7 +85,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+import java.util.Objects;
 
 public class TIHooks {
     private static boolean needsDequicken() {
@@ -111,8 +112,14 @@ public class TIHooks {
         }
 
         public void setDef(ClassDef class_def) {
-            // TODO: find direct/virtual
-            def = class_def.findMethod(MethodId.of(executable));
+            var id = MethodId.of(executable);
+            MethodDef edef;
+            if ((ArtMethodUtils.getExecutableFlags(executable) & ACC_DIRECT_MASK) != 0) {
+                edef = class_def.findDirectMethod(id);
+            } else {
+                edef = class_def.findVirtualMethod(id);
+            }
+            this.def = Objects.requireNonNull(edef);
         }
 
         public String handleName() {
@@ -275,16 +282,12 @@ public class TIHooks {
         var new_methods = new ArrayList<MethodDef>(old_methods.size());
         int i = 0;
         for (var edef : old_methods) {
+            var art_method = art_methods[i];
             var impl = edef.getImplementation();
-            if (impl != null) {
-                var art_method = art_methods[i];
-                new_methods.add(MethodBuilder.build(mb -> mb
-                        .of(edef)
-                        .withCode(dequicken(cache, art_method, impl))
-                ));
-            } else {
-                new_methods.add(edef);
-            }
+            new_methods.add(impl == null ? edef : MethodBuilder.build(mb -> mb
+                    .of(edef)
+                    .withCode(dequicken(cache, art_method, impl))
+            ));
             i++;
         }
         return ClassBuilder.build(cb -> cb.of(cdef).setMethods(new_methods));

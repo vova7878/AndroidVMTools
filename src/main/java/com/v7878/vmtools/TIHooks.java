@@ -31,6 +31,7 @@ import static com.v7878.unsafe.Reflection.fieldOffset;
 import static com.v7878.unsafe.Reflection.getArtMethods;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getDeclaredMethod;
+import static com.v7878.unsafe.Reflection.getHiddenField;
 import static com.v7878.unsafe.Reflection.getHiddenFields;
 import static com.v7878.unsafe.Reflection.unreflect;
 import static com.v7878.unsafe.Utils.check;
@@ -89,6 +90,8 @@ import java.util.Objects;
 
 public class TIHooks {
     private static boolean needsDequicken() {
+        // Below API 28 there is another verification method,
+        //  and above API 30 there are no "quick" opcodes
         return ART_SDK_INT >= 28 && ART_SDK_INT <= 30;
     }
 
@@ -405,9 +408,33 @@ public class TIHooks {
 
         var redef_map = new ArrayList<Pair<Class<?>, byte[]>>(requests.size());
 
+        var methods_map = new HashMap<Long, Integer>(requests.size());
+        class Holder {
+            static final long METHODS_OFFSET = fieldOffset(
+                    getHiddenField(Class.class, "methods"));
+            static final long COPIED_METHODS_OFFSET = fieldOffset(
+                    getHiddenField(Class.class, "copiedMethodsOffset"));
+        }
+
         for (var loader_entry : requests.entrySet()) {
             for (var request_entry : loader_entry.getValue().entrySet()) {
                 var request = request_entry.getValue();
+
+                // Fix bug in API 26 - when redefining a class,
+                //  iteration occurs not only on the methods that the class declares,
+                //  but also on the methods of superinterfaces
+                if (ART_SDK_INT == 26) {
+                    long methods = AndroidUnsafe.getLongO(
+                            request.clazz, Holder.METHODS_OFFSET);
+                    assert methods != 0;
+                    int methods_count = AndroidUnsafe.getIntN(methods);
+                    assert methods_count != 0;
+                    int copied = AndroidUnsafe.getShortO(request.clazz,
+                            Holder.COPIED_METHODS_OFFSET) & 0xffff;
+                    assert methods_count >= copied;
+                    AndroidUnsafe.putIntN(methods, copied);
+                    methods_map.put(methods, methods_count);
+                }
 
                 var hook_builder = ClassBuilder.newInstance();
                 hook_builder.of(request.def);
@@ -437,5 +464,9 @@ public class TIHooks {
 
         //noinspection unchecked
         JVMTI.RedefineClasses(redef_map.toArray(new Pair[0]));
+
+        if (ART_SDK_INT == 26) {
+            methods_map.forEach(AndroidUnsafe::putIntN);
+        }
     }
 }

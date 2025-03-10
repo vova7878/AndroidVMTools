@@ -5,6 +5,7 @@ import static com.v7878.dex.DexConstants.ACC_FINAL;
 import static com.v7878.dex.DexConstants.ACC_NATIVE;
 import static com.v7878.dex.DexConstants.ACC_PUBLIC;
 import static com.v7878.dex.DexConstants.ACC_STATIC;
+import static com.v7878.dex.DexConstants.ACC_VISIBILITY_MASK;
 import static com.v7878.dex.Opcode.IGET;
 import static com.v7878.dex.Opcode.IGET_BOOLEAN;
 import static com.v7878.dex.Opcode.IGET_BYTE;
@@ -29,6 +30,7 @@ import static com.v7878.unsafe.Reflection.fieldOffset;
 import static com.v7878.unsafe.Reflection.getArtMethods;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
 import static com.v7878.unsafe.Reflection.getDeclaredMethod;
+import static com.v7878.unsafe.Reflection.getHiddenFields;
 import static com.v7878.unsafe.Reflection.unreflect;
 import static com.v7878.unsafe.Utils.check;
 import static com.v7878.unsafe.Utils.shouldNotReachHere;
@@ -67,6 +69,7 @@ import com.v7878.r8.annotations.DoNotShrink;
 import com.v7878.r8.annotations.DoNotShrinkType;
 import com.v7878.ti.JVMTI;
 import com.v7878.unsafe.AndroidUnsafe;
+import com.v7878.unsafe.ArtFieldUtils;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
 import com.v7878.unsafe.ClassUtils.ClassStatus;
@@ -81,6 +84,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 
 public class TIHooks {
     private static boolean needsDequicken() {
@@ -332,6 +336,14 @@ public class TIHooks {
             var loader = loader_entry.getKey();
             for (var request_entry : loader_entry.getValue().entrySet()) {
                 var request = request_entry.getValue();
+
+                if (ART_SDK_INT <= 28) {
+                    // Up to android 9 inclusive, marking backup methods as kAccSkipAccessChecks is not enough
+                    var fields = getHiddenFields(request.clazz);
+                    for (var field : fields) {
+                        ArtFieldUtils.changeFieldFlags(field, ACC_VISIBILITY_MASK, ACC_PUBLIC);
+                    }
+                }
 
                 var backup_name = _Utils.generateClassName(loader, "HookBackup");
                 var backup_id = TypeId.ofName(backup_name);

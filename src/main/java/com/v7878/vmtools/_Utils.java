@@ -1,5 +1,15 @@
 package com.v7878.vmtools;
 
+import static com.v7878.unsafe.AndroidUnsafe.PAGE_SIZE;
+import static com.v7878.unsafe.Utils.shouldNotHappen;
+import static com.v7878.unsafe.misc.Math.roundDownUL;
+import static com.v7878.unsafe.misc.Math.roundUpUL;
+
+import android.system.ErrnoException;
+import android.system.OsConstants;
+
+import com.v7878.unsafe.io.IOUtils;
+
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
@@ -45,5 +55,18 @@ final class _Utils {
             args.addAll(List.of(ex.getParameterTypes()));
         }
         return MethodType.methodType(ret, args);
+    }
+
+    public static final int PROT_RX = OsConstants.PROT_READ | OsConstants.PROT_EXEC;
+    public static final int PROT_RWX = PROT_RX | OsConstants.PROT_WRITE;
+
+    public static void aligned_mprotect(long address, long length, int prot) {
+        long end = roundUpUL(address + length, PAGE_SIZE);
+        long begin = roundDownUL(address, PAGE_SIZE);
+        try {
+            IOUtils.mprotect(begin, end - begin, prot);
+        } catch (ErrnoException e) {
+            throw shouldNotHappen(e);
+        }
     }
 }

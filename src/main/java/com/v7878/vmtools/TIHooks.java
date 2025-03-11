@@ -22,11 +22,14 @@ import static com.v7878.dex.Opcode.IPUT_OBJECT;
 import static com.v7878.dex.Opcode.IPUT_SHORT;
 import static com.v7878.dex.Opcode.IPUT_WIDE;
 import static com.v7878.dex.builder.CodeBuilder.Op.GET_OBJECT;
+import static com.v7878.unsafe.AndroidUnsafe.ARRAY_BYTE_BASE_OFFSET;
 import static com.v7878.unsafe.ArtModifiers.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtModifiers.kAccPreCompiled;
 import static com.v7878.unsafe.ArtModifiers.kAccSkipAccessChecks;
 import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
 import static com.v7878.unsafe.DexFileUtils.openDexFile;
+import static com.v7878.unsafe.InstructionSet.ARM;
+import static com.v7878.unsafe.InstructionSet.CURRENT_INSTRUCTION_SET;
 import static com.v7878.unsafe.Reflection.fieldOffset;
 import static com.v7878.unsafe.Reflection.getArtMethods;
 import static com.v7878.unsafe.Reflection.getDeclaredField;
@@ -44,6 +47,9 @@ import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.SHORT;
 import static com.v7878.unsafe.foreign.BulkLinker.processSymbols;
 import static com.v7878.unsafe.foreign.LibArt.ART;
+import static com.v7878.vmtools._Utils.PROT_RWX;
+import static com.v7878.vmtools._Utils.PROT_RX;
+import static com.v7878.vmtools._Utils.aligned_mprotect;
 import static com.v7878.vmtools._Utils.rawMethodTypeOf;
 
 import android.util.Pair;
@@ -76,11 +82,11 @@ import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
 import com.v7878.unsafe.ClassUtils.ClassStatus;
 import com.v7878.unsafe.DexFileUtils;
+import com.v7878.unsafe.ExtraMemoryAccess;
 import com.v7878.unsafe.invoke.Transformers;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -89,6 +95,37 @@ import java.util.Map;
 import java.util.Objects;
 
 public class TIHooks {
+    static {
+        var check_ptr = JVMTI.JVMTI.findOrThrow(
+                "_ZN12openjdkjvmti9Redefiner17ClassRedefinition17CheckVerificationERKNS_20RedefinitionDataIterE"
+        ).nativeAddress();
+        byte[] ret_true = switch (CURRENT_INSTRUCTION_SET) {
+            case X86, X86_64 -> new byte[]{-80, 1, -61};
+            case ARM64 -> new byte[]{32, 0, -128, 82, -64, 3, 95, -42};
+            case ARM -> {
+                if ((check_ptr & 1) == 1) {
+                    // Thumb
+                    yield new byte[]{1, 32, 112, 71};
+                } else {
+                    yield new byte[]{1, 0, -96, -29, 30, -1, 47, -31};
+                }
+            }
+            default -> throw shouldNotReachHere();
+        };
+        if (CURRENT_INSTRUCTION_SET == ARM) {
+            check_ptr &= ~1;
+        }
+        // TODO: Use SuspendAll to prevent code in other threads
+        //  from touching instructions in the middle of copying
+        aligned_mprotect(check_ptr, ret_true.length, PROT_RWX);
+        try {
+            ExtraMemoryAccess.copyMemory(ret_true, ARRAY_BYTE_BASE_OFFSET,
+                    null, check_ptr, ret_true.length);
+        } finally {
+            aligned_mprotect(check_ptr, ret_true.length, PROT_RX);
+        }
+    }
+
     private static boolean needsDequicken() {
         // Below API 28 there is another verification method,
         //  and above API 30 there are no "quick" opcodes
@@ -301,17 +338,13 @@ public class TIHooks {
         var requests = new HashMap<ClassLoader, Map<Class<?>, ClassRedefinitionRequest>>();
         int[] count = {0};
         hooks.forEach((executable, hooker) -> {
-            if (executable instanceof Constructor<?>) {
-                // TODO
-                throw new IllegalArgumentException("Constructors are not supported");
+            if ((executable.getModifiers() & ACC_ABSTRACT) != 0) {
+                // TODO?
+                throw new IllegalArgumentException("Abstract methods are not supported");
             }
             if ((executable.getModifiers() & ACC_NATIVE) != 0) {
                 // TODO
                 throw new IllegalArgumentException("Native methods are not supported");
-            }
-            if ((executable.getModifiers() & ACC_ABSTRACT) != 0) {
-                // TODO?
-                throw new IllegalArgumentException("Abstract methods are not supported");
             }
 
             var clazz = executable.getDeclaringClass();
@@ -444,6 +477,7 @@ public class TIHooks {
                     var ret_shorty = proto.getReturnType().getShorty();
                     var ins = proto.countInputRegisters();
 
+                    hook_builder.withoutMethods(executable.def); // TODO
                     hook_builder.withMethod(mb -> mb
                             .of(executable.def)
                             .withCode(/* wide return */ 2, ib -> ib
@@ -464,6 +498,10 @@ public class TIHooks {
 
         //noinspection unchecked
         JVMTI.RedefineClasses(redef_map.toArray(new Pair[0]));
+        // TODO: Use SuspendAll to prevent other threads
+        //  from trying to verify classes before us
+        redef_map.forEach(pair ->
+                ClassUtils.setClassStatus(pair.first, ClassStatus.Verified));
 
         if (ART_SDK_INT == 26) {
             methods_map.forEach(AndroidUnsafe::putIntN);

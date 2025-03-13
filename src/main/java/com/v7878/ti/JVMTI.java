@@ -116,7 +116,8 @@ import com.v7878.unsafe.access.JavaForeignAccess;
 import com.v7878.unsafe.foreign.BulkLinker;
 import com.v7878.unsafe.foreign.BulkLinker.CallSignature;
 import com.v7878.unsafe.foreign.BulkLinker.LibrarySymbol;
-import com.v7878.unsafe.foreign.LibDLExt;
+import com.v7878.unsafe.foreign.LibDL;
+import com.v7878.unsafe.foreign.RawNativeLibraries;
 
 import java.lang.reflect.Method;
 import java.util.Objects;
@@ -291,7 +292,8 @@ public final class JVMTI {
 
     private static final String JVMTI_NAME = VM.isDebugVMLibrary() ? "libopenjdkjvmtid.so" : "libopenjdkjvmti.so";
     @ApiSensitive
-    public static final SymbolLookup JVMTI = LibDLExt.systemLibraryLookup(JVMTI_NAME, JVMTI_SCOPE);
+    public static final SymbolLookup JVMTI = JavaForeignAccess.libraryLookup(
+            RawNativeLibraries.cload(JVMTI_NAME, LibDL.ART_CALLER), JVMTI_SCOPE);
 
     @DoNotShrinkType
     @DoNotOptimize

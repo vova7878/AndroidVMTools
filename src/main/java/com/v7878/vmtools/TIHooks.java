@@ -477,7 +477,6 @@ public class TIHooks {
                     var ret_shorty = proto.getReturnType().getShorty();
                     var ins = proto.countInputRegisters();
 
-                    hook_builder.withoutMethods(executable.def); // TODO
                     hook_builder.withMethod(mb -> mb
                             .of(executable.def)
                             .withCode(/* wide return */ 2, ib -> ib

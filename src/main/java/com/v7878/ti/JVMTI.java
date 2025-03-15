@@ -685,47 +685,47 @@ public final class JVMTI {
         abstract int GetFrameCount(long env, Object thread, long count_ptr);
 
         @LibrarySymbol(name = "GetLocalInstance")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, LONG_AS_WORD})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, LONG_AS_WORD})
         abstract int GetLocalInstance(long env, Object thread, int depth, long value_ptr);
 
         @LibrarySymbol(name = "GetLocalObject")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalObject(long env, Object thread, int depth, int slot, long value_ptr);
 
         @LibrarySymbol(name = "GetLocalInt")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalInt(long env, Object thread, int depth, int slot, long value_ptr);
 
         @LibrarySymbol(name = "GetLocalLong")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalLong(long env, Object thread, int depth, int slot, long value_ptr);
 
         @LibrarySymbol(name = "GetLocalFloat")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalFloat(long env, Object thread, int depth, int slot, long value_ptr);
 
         @LibrarySymbol(name = "GetLocalDouble")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG_AS_WORD})
         abstract int GetLocalDouble(long env, Object thread, int depth, int slot, long value_ptr);
 
         @LibrarySymbol(name = "SetLocalObject")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, OBJECT})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, OBJECT})
         abstract int SetLocalObject(long env, Object thread, int depth, int slot, Object value);
 
         @LibrarySymbol(name = "SetLocalInt")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, INT})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, INT})
         abstract int SetLocalInt(long env, Object thread, int depth, int slot, int value);
 
         @LibrarySymbol(name = "SetLocalLong")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, LONG})
         abstract int SetLocalLong(long env, Object thread, int depth, int slot, long value);
 
         @LibrarySymbol(name = "SetLocalFloat")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, FLOAT})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, FLOAT})
         abstract int SetLocalFloat(long env, Object thread, int depth, int slot, float value);
 
         @LibrarySymbol(name = "SetLocalDouble")
-        @CallSignature(type = CRITICAL, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, DOUBLE})
+        @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, DOUBLE})
         abstract int SetLocalDouble(long env, Object thread, int depth, int slot, double value);
 
         static final Native INSTANCE = AndroidUnsafe.allocateInstance(

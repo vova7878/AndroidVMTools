@@ -80,7 +80,6 @@ import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.ArtFieldUtils;
 import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
-import com.v7878.unsafe.ClassUtils.ClassStatus;
 import com.v7878.unsafe.DexFileUtils;
 import com.v7878.unsafe.ExtraMemoryAccess;
 import com.v7878.unsafe.invoke.Transformers;
@@ -422,7 +421,7 @@ public class TIHooks {
                 DexFileUtils.setTrusted(dexfile);
 
                 var backup = DexFileUtils.loadClass(dexfile, backup_name, loader);
-                ClassUtils.setClassStatus(backup, ClassStatus.Verified);
+                ClassUtils.forceClassVerified(backup);
 
                 // TODO: simplify the search for methods and fields?
                 for (var executable : request_entry.getValue().executables) {
@@ -500,7 +499,7 @@ public class TIHooks {
         // TODO: Use SuspendAll to prevent other threads
         //  from trying to verify classes before us
         redef_map.forEach(pair ->
-                ClassUtils.setClassStatus(pair.first, ClassStatus.Verified));
+                ClassUtils.forceClassVerified(pair.first));
 
         if (ART_SDK_INT == 26) {
             methods_map.forEach(AndroidUnsafe::putIntN);

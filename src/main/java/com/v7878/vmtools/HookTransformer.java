@@ -20,7 +20,7 @@ final class HookTransformerImpl extends AbstractTransformer {
 
     @Override
     protected void transform(MethodHandle thiz, EmulatedStackFrame stack) throws Throwable {
-        stack.setType(original.type());
+        stack.type(original.type());
         transformer.transform(original, stack);
     }
 }

@@ -3,11 +3,11 @@ package com.v7878.vmtools;
 import static com.v7878.dex.DexConstants.NO_INDEX;
 import static com.v7878.dex.DexOffsets.CHECKSUM_DATA_START_OFFSET;
 import static com.v7878.dex.DexOffsets.CHECKSUM_OFFSET;
-import static com.v7878.dex.DexOffsets.CONTAINER_OFF_OFFSET;
 import static com.v7878.dex.DexOffsets.DATA_SIZE_OFFSET;
 import static com.v7878.dex.DexOffsets.DATA_START_OFFSET;
 import static com.v7878.dex.DexOffsets.ENDIAN_TAG_OFFSET;
 import static com.v7878.dex.DexOffsets.FILE_SIZE_OFFSET;
+import static com.v7878.dex.DexOffsets.HEADER_OFF_OFFSET;
 import static com.v7878.dex.DexOffsets.HEADER_SIZE_OFFSET;
 import static com.v7878.dex.DexOffsets.SIGNATURE_DATA_START_OFFSET;
 import static com.v7878.dex.DexOffsets.SIGNATURE_OFFSET;
@@ -218,7 +218,7 @@ public final class DexFileDump {
         int version = getIntN(header + VERSION_OFFSET);
         if (isStandartDexVersion(version)) return 0;
         if (isDexContainerVersion(version))
-            return getIntN(header + CONTAINER_OFF_OFFSET);
+            return getIntN(header + HEADER_OFF_OFFSET);
         throw new IllegalStateException(
                 "Unsupported dex version: " + Integer.toHexString(version));
     }

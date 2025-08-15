@@ -45,7 +45,6 @@ import static com.v7878.unsafe.foreign.BulkLinker.LibrarySymbol;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.INT;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.SHORT;
-import static com.v7878.unsafe.foreign.BulkLinker.processSymbols;
 import static com.v7878.unsafe.foreign.LibArt.ART;
 import static com.v7878.vmtools._Utils.PROT_RWX;
 import static com.v7878.vmtools._Utils.PROT_RX;
@@ -82,6 +81,7 @@ import com.v7878.unsafe.ArtMethodUtils;
 import com.v7878.unsafe.ClassUtils;
 import com.v7878.unsafe.DexFileUtils;
 import com.v7878.unsafe.ExtraMemoryAccess;
+import com.v7878.unsafe.foreign.BulkLinker;
 import com.v7878.unsafe.invoke.Transformers;
 
 import java.lang.invoke.MethodHandle;
@@ -203,8 +203,7 @@ public class TIHooks {
         @CallSignature(type = CRITICAL, ret = SHORT, args = {LONG_AS_WORD, INT})
         abstract short GetIndexFromQuickening(long thiz, int dex_pc);
 
-        static final Native INSTANCE = AndroidUnsafe.allocateInstance(
-                processSymbols(SCOPE, Native.class, ART));
+        static final Native INSTANCE = BulkLinker.generateImpl(SCOPE, Native.class, ART);
     }
 
     private static int getQuickId(long art_method, int dex_pc) {

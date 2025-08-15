@@ -34,7 +34,7 @@ import com.v7878.unsafe.NativeCodeBlob;
 import com.v7878.unsafe.Utils;
 import com.v7878.unsafe.Utils.WeakReferenceCache;
 import com.v7878.unsafe.access.InvokeAccess;
-import com.v7878.unsafe.invoke.MethodHandlesFixes;
+import com.v7878.unsafe.invoke.MethodHandlesImpl;
 import com.v7878.unsafe.invoke.Transformers;
 import com.v7878.vmtools.Runtime.DebugState;
 
@@ -270,7 +270,7 @@ public class Hooks {
         var erased = type.erase(); // TODO: maybe use basic type?
         var invoker_class = loadInvoker(erased);
         var hooker_method = getDeclaredMethod(invoker_class, METHOD_NAME, InvokeAccess.ptypes(erased));
-        var backup_handle = MethodHandlesFixes.reinterptetHandle(unreflect(hooker_method), type);
+        var backup_handle = MethodHandlesImpl.reinterptetHandle(unreflect(hooker_method), type);
         var impl = new HookTransformerImpl(backup_handle, transformer);
         var handle = Transformers.makeTransformer(erased, impl);
         var handle_field = getDeclaredField(invoker_class, FIELD_NAME);

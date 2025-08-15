@@ -4,7 +4,6 @@ import static com.v7878.unsafe.foreign.BulkLinker.CallType.CRITICAL;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.BOOL;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.VOID;
-import static com.v7878.unsafe.foreign.BulkLinker.processSymbols;
 import static com.v7878.unsafe.foreign.LibArt.ART;
 
 import com.v7878.foreign.Arena;
@@ -12,8 +11,8 @@ import com.v7878.foreign.MemorySegment;
 import com.v7878.r8.annotations.DoNotOptimize;
 import com.v7878.r8.annotations.DoNotShrink;
 import com.v7878.r8.annotations.DoNotShrinkType;
-import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.Utils.FineClosable;
+import com.v7878.unsafe.foreign.BulkLinker;
 import com.v7878.unsafe.foreign.BulkLinker.CallSignature;
 import com.v7878.unsafe.foreign.BulkLinker.LibrarySymbol;
 
@@ -35,8 +34,7 @@ public class ScopedSuspendAll implements FineClosable {
         @CallSignature(type = CRITICAL, ret = VOID, args = {LONG_AS_WORD})
         abstract void ResumeAll(long thiz);
 
-        static final Native INSTANCE = AndroidUnsafe.allocateInstance(
-                processSymbols(SCOPE, Native.class, ART));
+        static final Native INSTANCE = BulkLinker.generateImpl(SCOPE, Native.class, ART);
     }
 
     public ScopedSuspendAll(boolean long_suspend) {

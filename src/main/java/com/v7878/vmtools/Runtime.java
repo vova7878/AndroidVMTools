@@ -5,7 +5,6 @@ import static com.v7878.unsafe.foreign.BulkLinker.CallType.CRITICAL;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.INT;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.VOID;
-import static com.v7878.unsafe.foreign.BulkLinker.processSymbols;
 import static com.v7878.unsafe.foreign.LibArt.ART;
 import static com.v7878.vmtools.Runtime.DebugState.kNonJavaDebuggable;
 
@@ -13,8 +12,8 @@ import com.v7878.foreign.Arena;
 import com.v7878.r8.annotations.DoNotOptimize;
 import com.v7878.r8.annotations.DoNotShrink;
 import com.v7878.r8.annotations.DoNotShrinkType;
-import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.JNIUtils;
+import com.v7878.unsafe.foreign.BulkLinker;
 import com.v7878.unsafe.foreign.BulkLinker.CallSignature;
 import com.v7878.unsafe.foreign.BulkLinker.Conditions;
 import com.v7878.unsafe.foreign.BulkLinker.LibrarySymbol;
@@ -41,9 +40,9 @@ public class Runtime {
         @DoNotShrink
         private static final Arena SCOPE = Arena.ofAuto();
 
-        @LibrarySymbol(conditions = @Conditions(art_api = {34, 35, 36}),
+        @LibrarySymbol(conditions = @Conditions(min_art = 34),
                 name = "_ZN3art7Runtime20SetRuntimeDebugStateENS0_17RuntimeDebugStateE")
-        @LibrarySymbol(conditions = @Conditions(art_api = {26, 27, 28, 29, 30, 31, 32, 33}),
+        @LibrarySymbol(conditions = @Conditions(max_art = 33),
                 name = "_ZN3art7Runtime17SetJavaDebuggableEb")
         @CallSignature(type = CRITICAL, ret = VOID, args = {LONG_AS_WORD, INT})
         abstract void SetRuntimeDebugState(long runtime, int state);
@@ -52,8 +51,7 @@ public class Runtime {
         @CallSignature(type = CRITICAL, ret = VOID, args = {LONG_AS_WORD})
         abstract void DeoptimizeBootImage(long runtime);
 
-        static final Native INSTANCE = AndroidUnsafe.allocateInstance(
-                processSymbols(SCOPE, Native.class, ART));
+        static final Native INSTANCE = BulkLinker.generateImpl(SCOPE, Native.class, ART);
     }
 
     public static void setRuntimeDebugState(DebugState state) {

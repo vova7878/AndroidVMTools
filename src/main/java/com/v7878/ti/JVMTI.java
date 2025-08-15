@@ -108,7 +108,6 @@ import com.v7878.r8.annotations.AlwaysInline;
 import com.v7878.r8.annotations.DoNotOptimize;
 import com.v7878.r8.annotations.DoNotShrink;
 import com.v7878.r8.annotations.DoNotShrinkType;
-import com.v7878.unsafe.AndroidUnsafe;
 import com.v7878.unsafe.ApiSensitive;
 import com.v7878.unsafe.JNIUtils;
 import com.v7878.unsafe.VM;
@@ -310,9 +309,8 @@ public final class JVMTI {
         @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = BOOL, args = {})
         abstract boolean Deinitialize();
 
-        static final Init INSTANCE = AndroidUnsafe.allocateInstance(
-                BulkLinker.processSymbols(JVMTI_SCOPE, Init.class,
-                        JVMTI.or(getJNIInvokeInterfaceLookup())));
+        static final Init INSTANCE = BulkLinker.generateImpl(JVMTI_SCOPE, Init.class,
+                JVMTI.or(getJNIInvokeInterfaceLookup()));
     }
 
     private static final long JVMTI_ENV;
@@ -728,8 +726,7 @@ public final class JVMTI {
         @CallSignature(type = NATIVE_STATIC_OMIT_ENV, ret = INT, args = {LONG_AS_WORD, OBJECT, INT, INT, DOUBLE})
         abstract int SetLocalDouble(long env, Object thread, int depth, int slot, double value);
 
-        static final Native INSTANCE = AndroidUnsafe.allocateInstance(
-                BulkLinker.processSymbols(JVMTI_SCOPE, Native.class, getJVMTIInterfaceLookup()));
+        static final Native INSTANCE = BulkLinker.generateImpl(JVMTI_SCOPE, Native.class, getJVMTIInterfaceLookup());
     }
 
     private static void checkError(int error) {

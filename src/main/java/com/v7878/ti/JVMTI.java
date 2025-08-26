@@ -70,7 +70,8 @@ import static com.v7878.ti.JVMTIConstants.JVMTI_VERSION;
 import static com.v7878.ti.JVMTIConstants.JVMTI_VERSION_1_2;
 import static com.v7878.unsafe.AndroidUnsafe.putIntN;
 import static com.v7878.unsafe.AndroidUnsafe.putWordN;
-import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
+import static com.v7878.unsafe.ArtVersion.A9;
+import static com.v7878.unsafe.ArtVersion.ART_INDEX;
 import static com.v7878.unsafe.JNIUtils.JNI_EVERSION;
 import static com.v7878.unsafe.JNIUtils.JNI_OK;
 import static com.v7878.unsafe.JNIUtils.getJNIInvokeInterfaceLookup;
@@ -317,7 +318,7 @@ public final class JVMTI {
 
     static {
         final int kArtTiVersion = JVMTI_VERSION_1_2 | 0x40000000;
-        int version = ART_SDK_INT <= 27 ? JVMTI_VERSION : kArtTiVersion;
+        int version = ART_INDEX < A9 ? JVMTI_VERSION : kArtTiVersion;
         long JVM = getJavaVMPtr();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment ptr = arena.allocate(ADDRESS);

@@ -26,7 +26,10 @@ import static com.v7878.unsafe.AndroidUnsafe.ARRAY_BYTE_BASE_OFFSET;
 import static com.v7878.unsafe.ArtModifiers.kAccCompileDontBother;
 import static com.v7878.unsafe.ArtModifiers.kAccPreCompiled;
 import static com.v7878.unsafe.ArtModifiers.kAccSkipAccessChecks;
-import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
+import static com.v7878.unsafe.ArtVersion.A11;
+import static com.v7878.unsafe.ArtVersion.A8p0;
+import static com.v7878.unsafe.ArtVersion.A9;
+import static com.v7878.unsafe.ArtVersion.ART_INDEX;
 import static com.v7878.unsafe.DexFileUtils.openDexFile;
 import static com.v7878.unsafe.InstructionSet.ARM;
 import static com.v7878.unsafe.InstructionSet.CURRENT_INSTRUCTION_SET;
@@ -128,7 +131,7 @@ public class TIHooks {
     private static boolean needsDequicken() {
         // Below API 28 there is another verification method,
         //  and above API 30 there are no "quick" opcodes
-        return ART_SDK_INT >= 28 && ART_SDK_INT <= 30;
+        return ART_INDEX >= A9 && ART_INDEX <= A11;
     }
 
     private static class ExecutableRedefinitionRequest {
@@ -374,7 +377,7 @@ public class TIHooks {
             for (var request_entry : loader_entry.getValue().entrySet()) {
                 var request = request_entry.getValue();
 
-                if (ART_SDK_INT <= 28) {
+                if (ART_INDEX <= A9) {
                     // Up to android 9 inclusive, marking backup methods as kAccSkipAccessChecks is not enough
                     var fields = getHiddenFields(request.clazz);
                     for (var field : fields) {
@@ -454,7 +457,7 @@ public class TIHooks {
                 // Fix bug in API 26 - when redefining a class,
                 //  iteration occurs not only on the methods that the class declares,
                 //  but also on the methods of superinterfaces
-                if (ART_SDK_INT == 26) {
+                if (ART_INDEX == A8p0) {
                     long methods = AndroidUnsafe.getLongO(
                             request.clazz, Holder.METHODS_OFFSET);
                     assert methods != 0;
@@ -500,7 +503,7 @@ public class TIHooks {
         redef_map.forEach(pair ->
                 ClassUtils.forceClassVerified(pair.first));
 
-        if (ART_SDK_INT == 26) {
+        if (ART_INDEX == A8p0) {
             methods_map.forEach(AndroidUnsafe::putIntN);
         }
     }

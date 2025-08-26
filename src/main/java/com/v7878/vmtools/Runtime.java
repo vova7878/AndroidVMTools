@@ -1,6 +1,7 @@
 package com.v7878.vmtools;
 
-import static com.v7878.unsafe.ArtVersion.ART_SDK_INT;
+import static com.v7878.unsafe.ArtVersion.A13;
+import static com.v7878.unsafe.ArtVersion.ART_INDEX;
 import static com.v7878.unsafe.foreign.BulkLinker.CallType.CRITICAL;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.INT;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.LONG_AS_WORD;
@@ -57,7 +58,7 @@ public class Runtime {
     public static void setRuntimeDebugState(DebugState state) {
         Objects.requireNonNull(state);
         int value;
-        if (ART_SDK_INT <= 33) {
+        if (ART_INDEX <= A13) {
             value = state == kNonJavaDebuggable ? 0 : 1;
         } else {
             value = state.ordinal();

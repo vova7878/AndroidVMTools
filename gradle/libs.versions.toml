@@ -2,7 +2,7 @@
 agp = "8.12.1"
 sun_cleanerstub = "v0.0.4"
 r8_annotations = "v0.0.3"
-panamaport = "a825d49c24"
+panamaport = "20211ffe50"
 
 [libraries]
 sun-cleanerstub = { module = "com.github.vova7878:SunCleanerStub", version.ref = "sun_cleanerstub" }

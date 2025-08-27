@@ -1,6 +1,7 @@
 package com.v7878.vmtools;
 
 import static com.v7878.unsafe.ArtVersion.A13;
+import static com.v7878.unsafe.ArtVersion.A14;
 import static com.v7878.unsafe.ArtVersion.ART_INDEX;
 import static com.v7878.unsafe.foreign.BulkLinker.CallType.CRITICAL;
 import static com.v7878.unsafe.foreign.BulkLinker.MapType.INT;
@@ -41,9 +42,9 @@ public class Runtime {
         @DoNotShrink
         private static final Arena SCOPE = Arena.ofAuto();
 
-        @LibrarySymbol(conditions = @Conditions(min_art = 34),
+        @LibrarySymbol(conditions = @Conditions(min_art = A14),
                 name = "_ZN3art7Runtime20SetRuntimeDebugStateENS0_17RuntimeDebugStateE")
-        @LibrarySymbol(conditions = @Conditions(max_art = 33),
+        @LibrarySymbol(conditions = @Conditions(max_art = A13),
                 name = "_ZN3art7Runtime17SetJavaDebuggableEb")
         @CallSignature(type = CRITICAL, ret = VOID, args = {LONG_AS_WORD, INT})
         abstract void SetRuntimeDebugState(long runtime, int state);

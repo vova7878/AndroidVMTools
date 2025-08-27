@@ -14,6 +14,7 @@ import static com.v7878.dex.DexOffsets.SIGNATURE_OFFSET;
 import static com.v7878.dex.DexOffsets.SIGNATURE_SIZE;
 import static com.v7878.foreign.MemoryLayout.PathElement.groupElement;
 import static com.v7878.foreign.ValueLayout.JAVA_BYTE;
+import static com.v7878.unsafe.AndroidUnsafe.ARRAY_BYTE_BASE_OFFSET;
 import static com.v7878.unsafe.AndroidUnsafe.getBooleanN;
 import static com.v7878.unsafe.AndroidUnsafe.getIntN;
 import static com.v7878.unsafe.AndroidUnsafe.getWordN;
@@ -35,6 +36,7 @@ import com.v7878.dex.immutable.ClassDef;
 import com.v7878.dex.immutable.Dex;
 import com.v7878.foreign.MemorySegment;
 import com.v7878.unsafe.DexFileUtils;
+import com.v7878.unsafe.ExtraMemoryAccess;
 import com.v7878.unsafe.VM;
 
 import java.nio.ByteBuffer;
@@ -192,6 +194,33 @@ public final class DexFileDump {
         fixProtectedDexHeader(dexfile_struct, true);
     }
 
+    private static byte[] copyReadable(long address, long size) {
+        byte[] out = new byte[Math.toIntExact(size)];
+
+        var end = address + size;
+
+        for (var entry : MMap.maps("self")) {
+            if (!entry.perms().contains("r")) {
+                continue;
+            }
+            if (entry.end() <= address || entry.start() >= end) {
+                continue;
+            }
+
+            long copy_begin = Math.max(address, entry.start());
+            long copy_end = Math.min(entry.end(), end);
+
+            long copy_offset = copy_begin - address;
+            long copy_size = copy_end - copy_begin;
+
+            ExtraMemoryAccess.copyMemory(null, copy_begin,
+                    out, ARRAY_BYTE_BASE_OFFSET + copy_offset,
+                    copy_size);
+        }
+
+        return out;
+    }
+
     public static byte[] getDexFileContent(long dexfile_struct) {
         if (isProtectedDex(dexfile_struct)) {
             fixProtectedDexHeader(dexfile_struct);
@@ -207,7 +236,8 @@ public final class DexFileDump {
             MemorySegment.copy(data_section, JAVA_BYTE, 0, out, data_offset, data_size);
             return out;
         }
-        return getDexFileData(dexfile_struct).toArray(JAVA_BYTE);
+        var data = getDexFileData(dexfile_struct);
+        return copyReadable(data.nativeAddress(), data.byteSize());
     }
 
     public static byte[] getDexFileContent(Class<?> clazz) {

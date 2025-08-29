@@ -1,13 +1,13 @@
 package com.v7878.vmtools;
 
+import static com.v7878.unsafe.Utils.shouldNotHappen;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
 import java.util.Objects;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 public class MMap {
     public record MMapEntry(long start, long end, String perms,
@@ -21,54 +21,31 @@ public class MMap {
             + "(?<offset>[0-9A-Fa-f]+)\\s+"
             + "(?<devMajor>[0-9A-Fa-f]+):(?<devMinor>[0-9A-Fa-f]+)\\s+"
             + "(?<inode>[0-9]+)\\s+"
-            + "(?<path>\\S*)" +
-            "$";
-    private static final Pattern ENTRY = Pattern.compile(PATTERN, Pattern.MULTILINE);
+            + "(?<path>.+)?"
+            + "$";
+    private static final Pattern ENTRY = Pattern.compile(PATTERN);
 
-    public static Iterable<MMapEntry> maps(String pid) {
+    public static Stream<MMapEntry> maps(String pid) {
         File maps = new File(String.format("/proc/%s/maps", pid));
-        String data;
-        try {
-            byte[] tmp = Files.readAllBytes(maps.toPath());
-            data = new String(tmp);
-        } catch (IOException ex) {
-            throw new IllegalStateException(ex);
-        }
 
-        Matcher match = ENTRY.matcher(data);
-        return () -> new Iterator<>() {
-            private MMapEntry find() {
-                if (!match.find()) {
-                    return null;
-                }
+        try {
+            //noinspection resource
+            return Files.lines(maps.toPath()).map(str -> {
+                var match = ENTRY.matcher(str);
+                assert match.matches();
                 return new MMapEntry(
-                        Long.parseLong(Objects.requireNonNull(match.group("start")), 16),
-                        Long.parseLong(Objects.requireNonNull(match.group("end")), 16),
+                        Long.parseUnsignedLong(Objects.requireNonNull(match.group("start")), 16),
+                        Long.parseUnsignedLong(Objects.requireNonNull(match.group("end")), 16),
                         Objects.requireNonNull(match.group("perms")),
-                        Long.parseLong(Objects.requireNonNull(match.group("offset")), 16),
-                        Integer.parseInt(Objects.requireNonNull(match.group("devMajor")), 16),
-                        Integer.parseInt(Objects.requireNonNull(match.group("devMinor")), 16),
-                        Long.parseLong(Objects.requireNonNull(match.group("inode"))),
+                        Long.parseUnsignedLong(Objects.requireNonNull(match.group("offset")), 16),
+                        Integer.parseUnsignedInt(Objects.requireNonNull(match.group("devMajor")), 16),
+                        Integer.parseUnsignedInt(Objects.requireNonNull(match.group("devMinor")), 16),
+                        Long.parseUnsignedLong(Objects.requireNonNull(match.group("inode"))),
                         match.group("path") // nullable
                 );
-            }
-
-            private MMapEntry current = find();
-
-            @Override
-            public boolean hasNext() {
-                return current == null;
-            }
-
-            @Override
-            public MMapEntry next() {
-                if (current == null) {
-                    throw new NoSuchElementException();
-                }
-                var out = current;
-                current = find();
-                return out;
-            }
-        };
+            });
+        } catch (IOException e) {
+            throw shouldNotHappen(e);
+        }
     }
 }

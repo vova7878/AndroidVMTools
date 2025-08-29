@@ -199,23 +199,25 @@ public final class DexFileDump {
 
         var end = address + size;
 
-        for (var entry : MMap.maps("self")) {
-            if (!entry.perms().contains("r")) {
-                continue;
-            }
-            if (entry.end() <= address || entry.start() >= end) {
-                continue;
-            }
+        try (var stream = MMap.maps("self")) {
+            stream.forEach(entry -> {
+                if (!entry.perms().contains("r")) {
+                    return;
+                }
+                if (entry.end() <= address || entry.start() >= end) {
+                    return;
+                }
 
-            long copy_begin = Math.max(address, entry.start());
-            long copy_end = Math.min(entry.end(), end);
+                long copy_begin = Math.max(address, entry.start());
+                long copy_end = Math.min(entry.end(), end);
 
-            long copy_offset = copy_begin - address;
-            long copy_size = copy_end - copy_begin;
+                long copy_offset = copy_begin - address;
+                long copy_size = copy_end - copy_begin;
 
-            ExtraMemoryAccess.copyMemory(null, copy_begin,
-                    out, ARRAY_BYTE_BASE_OFFSET + copy_offset,
-                    copy_size);
+                ExtraMemoryAccess.copyMemory(null, copy_begin,
+                        out, ARRAY_BYTE_BASE_OFFSET + copy_offset,
+                        copy_size);
+            });
         }
 
         return out;

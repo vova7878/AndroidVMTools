@@ -116,13 +116,13 @@ public final class DexFileDump {
         }
     }
 
-    public static boolean isProtectedDex(long dexfile_struct) {
-        long header = getDexFileHeader(dexfile_struct);
-        return getIntN(header) == 0 || getIntN(header + FILE_SIZE_OFFSET) == 0;
-    }
-
     @SuppressWarnings("PointlessBitwiseExpression")
     private static final int DEX_MAGIC = ('d' << 0) | ('e' << 8) | ('x' << 16) | ('\n' << 24);
+
+    public static boolean isProtectedDex(long dexfile_struct) {
+        long header = getDexFileHeader(dexfile_struct);
+        return getIntN(header) != DEX_MAGIC || getIntN(header + FILE_SIZE_OFFSET) == 0;
+    }
 
     private static boolean isStandartDexVersion(int version) {
         return switch (version) {
@@ -291,7 +291,7 @@ public final class DexFileDump {
             var cache = DexIO.readCache(ReadOptions.defaultOptions(),
                     getDexFileContent(entry.getKey()), 0, header_offset);
             entry.getValue().stream()
-                    .map(idx -> new Pair<>(cache.getClassDef(idx), cache))
+                    .map(idx -> new Pair<>(cache.getClass(idx), cache))
                     .forEach(defs::add);
         }
         defs.trimToSize();

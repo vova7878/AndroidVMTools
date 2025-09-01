@@ -1,22 +1,41 @@
 package com.v7878.vmtools;
 
 import static com.v7878.dex.DexConstants.NO_INDEX;
+import static com.v7878.dex.DexConstants.TYPE_CLASS_DEF_ITEM;
+import static com.v7878.dex.DexConstants.TYPE_FIELD_ID_ITEM;
+import static com.v7878.dex.DexConstants.TYPE_METHOD_ID_ITEM;
+import static com.v7878.dex.DexConstants.TYPE_PROTO_ID_ITEM;
+import static com.v7878.dex.DexConstants.TYPE_STRING_ID_ITEM;
+import static com.v7878.dex.DexConstants.TYPE_TYPE_ID_ITEM;
 import static com.v7878.dex.DexOffsets.CHECKSUM_DATA_START_OFFSET;
 import static com.v7878.dex.DexOffsets.CHECKSUM_OFFSET;
-import static com.v7878.dex.DexOffsets.DATA_SIZE_OFFSET;
+import static com.v7878.dex.DexOffsets.CLASS_COUNT_OFFSET;
+import static com.v7878.dex.DexOffsets.CLASS_START_OFFSET;
 import static com.v7878.dex.DexOffsets.DATA_START_OFFSET;
 import static com.v7878.dex.DexOffsets.ENDIAN_TAG_OFFSET;
+import static com.v7878.dex.DexOffsets.FIELD_COUNT_OFFSET;
+import static com.v7878.dex.DexOffsets.FIELD_START_OFFSET;
 import static com.v7878.dex.DexOffsets.FILE_SIZE_OFFSET;
 import static com.v7878.dex.DexOffsets.HEADER_OFF_OFFSET;
 import static com.v7878.dex.DexOffsets.HEADER_SIZE_OFFSET;
+import static com.v7878.dex.DexOffsets.MAP_OFFSET;
+import static com.v7878.dex.DexOffsets.METHOD_COUNT_OFFSET;
+import static com.v7878.dex.DexOffsets.METHOD_START_OFFSET;
+import static com.v7878.dex.DexOffsets.PROTO_COUNT_OFFSET;
+import static com.v7878.dex.DexOffsets.PROTO_START_OFFSET;
 import static com.v7878.dex.DexOffsets.SIGNATURE_DATA_START_OFFSET;
 import static com.v7878.dex.DexOffsets.SIGNATURE_OFFSET;
 import static com.v7878.dex.DexOffsets.SIGNATURE_SIZE;
+import static com.v7878.dex.DexOffsets.STRING_COUNT_OFFSET;
+import static com.v7878.dex.DexOffsets.STRING_START_OFFSET;
+import static com.v7878.dex.DexOffsets.TYPE_COUNT_OFFSET;
+import static com.v7878.dex.DexOffsets.TYPE_START_OFFSET;
 import static com.v7878.foreign.MemoryLayout.PathElement.groupElement;
 import static com.v7878.foreign.ValueLayout.JAVA_BYTE;
 import static com.v7878.unsafe.AndroidUnsafe.ARRAY_BYTE_BASE_OFFSET;
 import static com.v7878.unsafe.AndroidUnsafe.getBooleanN;
 import static com.v7878.unsafe.AndroidUnsafe.getIntN;
+import static com.v7878.unsafe.AndroidUnsafe.getShortN;
 import static com.v7878.unsafe.AndroidUnsafe.getWordN;
 import static com.v7878.unsafe.AndroidUnsafe.putIntN;
 import static com.v7878.unsafe.ArtVersion.A14;
@@ -74,6 +93,23 @@ public final class DexFileDump {
         return MemorySegment.ofAddress(header).reinterpret(size);
     }
 
+    private static class Holder {
+        static final long data_begin_offset;
+        static final long data_size_offset;
+
+        static {
+            if (ART_INDEX >= A14) {
+                data_begin_offset = DEXFILE_LAYOUT.byteOffset(
+                        groupElement("data_"), groupElement("array_"));
+                data_size_offset = DEXFILE_LAYOUT.byteOffset(
+                        groupElement("data_"), groupElement("size_"));
+            } else {
+                data_begin_offset = DEXFILE_LAYOUT.byteOffset(groupElement("data_begin_"));
+                data_size_offset = DEXFILE_LAYOUT.byteOffset(groupElement("data_size_"));
+            }
+        }
+    }
+
     /**
      * Standard dex: same as (begin, size).
      * Dex container: all dex files (starting from the first header).
@@ -82,22 +118,6 @@ public final class DexFileDump {
     public static MemorySegment getDexFileData(long dexfile_struct) {
         if (ART_INDEX < A9) {
             return getDexFile(dexfile_struct);
-        }
-        class Holder {
-            static final long data_begin_offset;
-            static final long data_size_offset;
-
-            static {
-                if (ART_INDEX >= A14) {
-                    data_begin_offset = DEXFILE_LAYOUT.byteOffset(
-                            groupElement("data_"), groupElement("array_"));
-                    data_size_offset = DEXFILE_LAYOUT.byteOffset(
-                            groupElement("data_"), groupElement("size_"));
-                } else {
-                    data_begin_offset = DEXFILE_LAYOUT.byteOffset(groupElement("data_begin_"));
-                    data_size_offset = DEXFILE_LAYOUT.byteOffset(groupElement("data_size_"));
-                }
-            }
         }
         long begin = getWordN(dexfile_struct + Holder.data_begin_offset);
         long size = getWordN(dexfile_struct + Holder.data_size_offset);
@@ -118,6 +138,8 @@ public final class DexFileDump {
 
     @SuppressWarnings("PointlessBitwiseExpression")
     private static final int DEX_MAGIC = ('d' << 0) | ('e' << 8) | ('x' << 16) | ('\n' << 24);
+    @SuppressWarnings("PointlessBitwiseExpression")
+    private static final int DEX_DEFAULT_VERSION = ('0' << 0) | ('3' << 8) | ('8' << 16) | ('\0' << 24);
 
     public static boolean isProtectedDex(long dexfile_struct) {
         long header = getDexFileHeader(dexfile_struct);
@@ -148,17 +170,54 @@ public final class DexFileDump {
         }
         long header = getDexFileHeader(dexfile_struct);
         int version = getIntN(header + VERSION_OFFSET);
-        if (!isStandartDexVersion(version)) {
-            throw new IllegalStateException(
-                    "Unsupported dex version: " + Integer.toHexString(version));
+        if (isDexContainerVersion(version)) {
+            throw new IllegalStateException("Dex container is not supported");
         }
-        int file_size = getIntN(header + DATA_START_OFFSET)
-                + getIntN(header + DATA_SIZE_OFFSET);
+        if (!isStandartDexVersion(version)) {
+            version = DEX_DEFAULT_VERSION;
+        }
+        int file_size = Math.toIntExact(getWordN(dexfile_struct + Holder.data_size_offset));
 
         putIntN(header, DEX_MAGIC);
+        putIntN(header + VERSION_OFFSET, version);
         putIntN(header + FILE_SIZE_OFFSET, file_size);
         putIntN(header + HEADER_SIZE_OFFSET, DexOffsets.BASE_HEADER_SIZE);
         putIntN(header + ENDIAN_TAG_OFFSET, DexConstants.ENDIAN_CONSTANT);
+
+        int map_offset = getIntN(header + MAP_OFFSET);
+        int map_size = getIntN(header + map_offset);
+        for (int i = 0; i < map_size; i++) {
+            long entry = header + map_offset + 4L + i * 12L;
+            int type = getShortN(entry) & 0xffff;
+            int size = getIntN(entry + 4);
+            int offset = getIntN(entry + 8);
+            switch (type) {
+                case TYPE_STRING_ID_ITEM -> {
+                    putIntN(header + STRING_COUNT_OFFSET, size);
+                    putIntN(header + STRING_START_OFFSET, offset);
+                }
+                case TYPE_TYPE_ID_ITEM -> {
+                    putIntN(header + TYPE_COUNT_OFFSET, size);
+                    putIntN(header + TYPE_START_OFFSET, offset);
+                }
+                case TYPE_PROTO_ID_ITEM -> {
+                    putIntN(header + PROTO_COUNT_OFFSET, size);
+                    putIntN(header + PROTO_START_OFFSET, offset);
+                }
+                case TYPE_FIELD_ID_ITEM -> {
+                    putIntN(header + FIELD_COUNT_OFFSET, size);
+                    putIntN(header + FIELD_START_OFFSET, offset);
+                }
+                case TYPE_METHOD_ID_ITEM -> {
+                    putIntN(header + METHOD_COUNT_OFFSET, size);
+                    putIntN(header + METHOD_START_OFFSET, offset);
+                }
+                case TYPE_CLASS_DEF_ITEM -> {
+                    putIntN(header + CLASS_COUNT_OFFSET, size);
+                    putIntN(header + CLASS_START_OFFSET, offset);
+                }
+            }
+        }
 
         if (skip_checksum_and_signature) {
             return;

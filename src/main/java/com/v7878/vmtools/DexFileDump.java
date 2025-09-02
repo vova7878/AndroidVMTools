@@ -1,5 +1,6 @@
 package com.v7878.vmtools;
 
+import static com.v7878.dex.DexConstants.ENDIAN_CONSTANT;
 import static com.v7878.dex.DexConstants.NO_INDEX;
 import static com.v7878.dex.DexConstants.TYPE_CLASS_DEF_ITEM;
 import static com.v7878.dex.DexConstants.TYPE_FIELD_ID_ITEM;
@@ -7,6 +8,7 @@ import static com.v7878.dex.DexConstants.TYPE_METHOD_ID_ITEM;
 import static com.v7878.dex.DexConstants.TYPE_PROTO_ID_ITEM;
 import static com.v7878.dex.DexConstants.TYPE_STRING_ID_ITEM;
 import static com.v7878.dex.DexConstants.TYPE_TYPE_ID_ITEM;
+import static com.v7878.dex.DexOffsets.BASE_HEADER_SIZE;
 import static com.v7878.dex.DexOffsets.CHECKSUM_DATA_START_OFFSET;
 import static com.v7878.dex.DexOffsets.CHECKSUM_OFFSET;
 import static com.v7878.dex.DexOffsets.CLASS_COUNT_OFFSET;
@@ -44,12 +46,11 @@ import static com.v7878.unsafe.ArtVersion.ART_INDEX;
 import static com.v7878.unsafe.DexFileUtils.DEXFILE_LAYOUT;
 import static com.v7878.unsafe.DexFileUtils.getDexFileStruct;
 
+import android.system.OsConstants;
 import android.util.Pair;
 
-import com.v7878.dex.DexConstants;
 import com.v7878.dex.DexIO;
 import com.v7878.dex.DexIO.DexReaderCache;
-import com.v7878.dex.DexOffsets;
 import com.v7878.dex.ReadOptions;
 import com.v7878.dex.immutable.ClassDef;
 import com.v7878.dex.immutable.Dex;
@@ -169,6 +170,8 @@ public final class DexFileDump {
             throw new IllegalStateException("Compact dex is not supported");
         }
         long header = getDexFileHeader(dexfile_struct);
+        _Utils.aligned_mprotect(header, BASE_HEADER_SIZE,
+                OsConstants.PROT_READ | OsConstants.PROT_WRITE);
         int version = getIntN(header + VERSION_OFFSET);
         if (isDexContainerVersion(version)) {
             throw new IllegalStateException("Dex container is not supported");
@@ -181,8 +184,8 @@ public final class DexFileDump {
         putIntN(header, DEX_MAGIC);
         putIntN(header + VERSION_OFFSET, version);
         putIntN(header + FILE_SIZE_OFFSET, file_size);
-        putIntN(header + HEADER_SIZE_OFFSET, DexOffsets.BASE_HEADER_SIZE);
-        putIntN(header + ENDIAN_TAG_OFFSET, DexConstants.ENDIAN_CONSTANT);
+        putIntN(header + HEADER_SIZE_OFFSET, BASE_HEADER_SIZE);
+        putIntN(header + ENDIAN_TAG_OFFSET, ENDIAN_CONSTANT);
 
         int map_offset = getIntN(header + MAP_OFFSET);
         int map_size = getIntN(header + map_offset);

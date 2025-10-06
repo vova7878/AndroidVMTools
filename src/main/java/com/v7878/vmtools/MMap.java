@@ -2,11 +2,9 @@ package com.v7878.vmtools;
 
 import static com.v7878.unsafe.Utils.shouldNotHappen;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.Objects;
-import java.util.regex.Pattern;
+import java.nio.file.Paths;
 import java.util.stream.Stream;
 
 public class MMap {
@@ -15,34 +13,40 @@ public class MMap {
                             long inode, String path) {
     }
 
-    private static final String PATTERN = "^"
-            + "(?<start>[0-9A-Fa-f]+)-(?<end>[0-9A-Fa-f]+)\\s+"
-            + "(?<perms>[rwxsp\\-]{4})\\s+"
-            + "(?<offset>[0-9A-Fa-f]+)\\s+"
-            + "(?<devMajor>[0-9A-Fa-f]+):(?<devMinor>[0-9A-Fa-f]+)\\s+"
-            + "(?<inode>[0-9]+)\\s+"
-            + "(?<path>.+)?"
-            + "$";
-    private static final Pattern ENTRY = Pattern.compile(PATTERN);
-
     public static Stream<MMapEntry> maps(String pid) {
-        File maps = new File(String.format("/proc/%s/maps", pid));
+        var file = Paths.get((String.format("/proc/%s/maps", pid)));
 
         try {
             //noinspection resource
-            return Files.lines(maps.toPath()).map(str -> {
-                var match = ENTRY.matcher(str);
-                assert match.matches();
-                return new MMapEntry(
-                        Long.parseUnsignedLong(Objects.requireNonNull(match.group("start")), 16),
-                        Long.parseUnsignedLong(Objects.requireNonNull(match.group("end")), 16),
-                        Objects.requireNonNull(match.group("perms")),
-                        Long.parseUnsignedLong(Objects.requireNonNull(match.group("offset")), 16),
-                        Integer.parseUnsignedInt(Objects.requireNonNull(match.group("devMajor")), 16),
-                        Integer.parseUnsignedInt(Objects.requireNonNull(match.group("devMinor")), 16),
-                        Long.parseUnsignedLong(Objects.requireNonNull(match.group("inode"))),
-                        match.group("path") // nullable
-                );
+            return Files.lines(file).map(line -> {
+                var parts = line.split(" ", 6);
+                assert parts.length >= 5;
+
+                var range = parts[0].split("-");
+                long start = Long.parseUnsignedLong(range[0], 16);
+                long end = Long.parseUnsignedLong(range[1], 16);
+
+                String parms = parts[1];
+
+                long offset = Long.parseUnsignedLong(parts[2], 16);
+
+                var dev = parts[3].split(":");
+                int devMajor = Integer.parseUnsignedInt(dev[0], 16);
+                int devMinor = Integer.parseUnsignedInt(dev[1], 16);
+
+                long inode = Long.parseUnsignedLong(parts[4], 16);
+
+                String path;
+                if (parts.length < 6) {
+                    path = null;
+                } else {
+                    path = parts[5].trim();
+                    if (path.isEmpty()) {
+                        path = null;
+                    }
+                }
+
+                return new MMapEntry(start, end, parms, offset, devMajor, devMinor, inode, path);
             });
         } catch (IOException e) {
             throw shouldNotHappen(e);

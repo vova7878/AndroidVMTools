@@ -70,7 +70,7 @@ public class Runtime {
     public static void DeoptimizeBootImage() {
         var instance = Native.INSTANCE;
         var runtime = JNIUtils.getRuntimePtr();
-        try (var ignored = new ScopedSuspendAll(true)) {
+        try (var ignored = new ScopedSuspendAll(false)) {
             instance.DeoptimizeBootImage(runtime);
         }
     }

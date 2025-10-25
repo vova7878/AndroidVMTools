@@ -47,6 +47,13 @@ import java.util.Objects;
 
 public class Hooks {
     static {
+        // Classes cannot be loaded and initialized during "SuspendAll"
+        {
+            ClassUtils.ensureClassInitialized(EntryPoints.class);
+            var method = getDeclaredMethod(Runnable.class, "run");
+            ArtMethodUtils.makeExecutableNonCompilable(method);
+        }
+
         Runtime.setRuntimeDebugState(DebugState.kNonJavaDebuggable);
     }
 
@@ -60,7 +67,7 @@ public class Hooks {
 
     public static void deoptimize(Executable ex) {
         ensureDeclaringClassInitialized(ex);
-        try (var ignored = new ScopedSuspendAll(true)) {
+        try (var ignored = new ScopedSuspendAll(false)) {
             ArtMethodUtils.makeExecutableNonCompilable(ex);
             long entry_point = Modifier.isNative(ex.getModifiers()) ?
                     EntryPoints.getGenericJniTrampoline() :
@@ -147,7 +154,7 @@ public class Hooks {
         SunCleaner.systemCleaner().register(target.getDeclaringClass(), scope::close);
         MemorySegment new_entry_point = NativeCodeBlob.makeCodeBlob(scope,
                 getTrampolineArray(getArtMethod(hooker), hooker_entry_point))[0];
-        try (var ignored = new ScopedSuspendAll(true)) {
+        try (var ignored = new ScopedSuspendAll(false)) {
             ArtMethodUtils.makeExecutableNonCompilable(target);
             ArtMethodUtils.changeExecutableFlags(target, kAccFastInterpreterToInterpreterInvoke, 0);
             ArtMethodUtils.setExecutableEntryPoint(target, new_entry_point.nativeAddress());

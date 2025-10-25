@@ -1,15 +1,15 @@
 [versions]
 agp = "8.13.0"
-sun_cleanerstub = "v0.0.6"
-r8_annotations = "v0.0.5"
-panamaport = "db71cce9c0"
+sun-cleanerstub = "v0.0.6"
+r8-annotations = "v0.0.5"
+panamaport = "bfbb15f4bc"
 
 [libraries]
-sun-cleanerstub = { module = "com.github.vova7878:SunCleanerStub", version.ref = "sun_cleanerstub" }
+sun-cleanerstub = { module = "com.github.vova7878:SunCleanerStub", version.ref = "sun-cleanerstub" }
 androidpanama = { module = "com.github.vova7878.PanamaPort:AndroidPanama", version.ref = "panamaport" }
 androidunsafe = { module = "com.github.vova7878.PanamaPort:AndroidUnsafe", version.ref = "panamaport" }
 llvm = { module = "com.github.vova7878.PanamaPort:LLVM", version.ref = "panamaport" }
-r8-annotations = { module = "com.github.vova7878:R8Annotations", version.ref = "r8_annotations" }
+r8-annotations = { module = "com.github.vova7878:R8Annotations", version.ref = "r8-annotations" }
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "agp" }

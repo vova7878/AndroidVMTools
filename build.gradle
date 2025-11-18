@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace 'com.v7878.vmtools'
-    compileSdk 36
+    compileSdk = 36
 
     defaultConfig {
         minSdk 26
@@ -26,11 +26,11 @@ android {
 }
 
 dependencies {
-    api libs.androidpanama
-    api libs.androidunsafe
-    api libs.llvm
+    api libs.panama.core
+    api libs.panama.unsafe
+    api libs.panama.llvm
 
-    implementation libs.sun.cleanerstub
+    implementation libs.sun.cleaner
     implementation libs.r8.annotations
 }
 
